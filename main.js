@@ -248,7 +248,7 @@ function main() {
       // 2. ATUALIZAR POSIÇÃO DO MODELO
       let modelViewMatrix = m4.identity();
       modelViewMatrix = m4.translate(modelViewMatrix, sapoWorldX, 0.0, sapoWorldZ);
-      modelViewMatrix = m4.scale(modelViewMatrix, 20.0, 20.0, 20.0);
+      modelViewMatrix = m4.scale(modelViewMatrix, 0.8, 0.8, 0.8);
 
       let inverseTransposeModelViewMatrix = m4.transpose(m4.inverse(modelViewMatrix));
 
