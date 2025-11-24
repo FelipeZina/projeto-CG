@@ -1,4 +1,4 @@
-// --- SHADERS ---
+// SHADERS
 const vertexShaderSource = `
     attribute vec3 a_position;
     attribute vec3 a_normal;
@@ -8,19 +8,19 @@ const vertexShaderSource = `
     varying vec3 v_surfaceToView;
     
     uniform mat4 u_modelMatrix;
-    uniform mat4 u_viewingMatrix;
+    uniform mat4 u_viewMatrix;
     uniform mat4 u_projectionMatrix;
-    uniform mat4 u_inverseTransposeModelMatrix;
-    
+    uniform mat4 u_worldInverseTranspose;
     uniform vec3 u_lightPosition;
     uniform vec3 u_viewPosition;
 
     void main() {
-        gl_Position = u_projectionMatrix * u_viewingMatrix * u_modelMatrix * vec4(a_position,1.0);
-        v_normal = normalize(mat3(u_inverseTransposeModelMatrix) * a_normal);
-        vec3 surfacePosition = (u_modelMatrix * vec4(a_position, 1.0)).xyz;
-        v_surfaceToLight = u_lightPosition - surfacePosition;
-        v_surfaceToView = u_viewPosition - surfacePosition;
+        vec4 worldPosition = u_modelMatrix * vec4(a_position, 1.0);
+        gl_Position = u_projectionMatrix * u_viewMatrix * worldPosition;
+        
+        v_normal = mat3(u_worldInverseTranspose) * a_normal;
+        v_surfaceToLight = u_lightPosition - worldPosition.xyz;
+        v_surfaceToView = u_viewPosition - worldPosition.xyz;
     }
 `;
 
@@ -32,56 +32,22 @@ const fragmentShaderSource = `
     varying vec3 v_surfaceToView;
     
     void main() {
-      vec3 ambientReflection = u_color;
-      vec3 diffuseReflection = u_color;
-      vec3 specularReflection = vec3(1.0,1.0,1.0);
+        vec3 normal = normalize(v_normal);
+        vec3 surfaceToLight = normalize(v_surfaceToLight);
+        vec3 surfaceToView = normalize(v_surfaceToView);
+        vec3 halfVector = normalize(surfaceToLight + surfaceToView);
 
-      gl_FragColor = vec4(diffuseReflection, 1.0);
+        float light = max(dot(normal, surfaceToLight), 0.0);
+        float specular = 0.0;
+        if (light > 0.0) {
+            specular = pow(max(dot(normal, halfVector), 0.0), 50.0);
+        }
 
-      vec3 normal = normalize(v_normal);
-      vec3 surfaceToLightDirection = normalize(v_surfaceToLight);
-      vec3 surfaceToViewDirection = normalize(v_surfaceToView);
-      vec3 halfVector = normalize(surfaceToLightDirection + surfaceToViewDirection);
-
-      float light = dot(surfaceToLightDirection,normal);
-      float specular = 0.0;
-      if (light > 0.0) {
-        specular = pow(dot(normal, halfVector), 250.0);
-      }
-
-      gl_FragColor.rgb = 0.5*ambientReflection + 0.5*light*diffuseReflection;
-      gl_FragColor.rgb += specular*specularReflection;
+        gl_FragColor = vec4(u_color * (0.4 + 0.6 * light) + (specular * 0.2), 1.0);
     }
 `;
 
-// --- FUNÇÕES UTILITÁRIAS (Compilar Shaders) ---
-
-function createShader(gl, type, source) {
-    const shader = gl.createShader(type);
-    gl.shaderSource(shader, source);
-    gl.compileShader(shader);
-    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-        console.error('Error compiling shader:', gl.getShaderInfoLog(shader));
-        gl.deleteShader(shader);
-        return null;
-    }
-    return shader;
-}
-
-function createProgram(gl, vertexShader, fragmentShader) {
-    const program = gl.createProgram();
-    gl.attachShader(program, vertexShader);
-    gl.attachShader(program, fragmentShader);
-    gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-        console.error('Error linking program:', gl.getProgramInfoLog(program));
-        gl.deleteProgram(program);
-        return null;
-    }
-    return program;
-}
-
-// Parse OBJ (Lê o texto do arquivo .obj)
+// PARSER OBJ
 function parseOBJ(text) {
   const positions = [];
   const normals = [];
@@ -102,17 +68,22 @@ function parseOBJ(text) {
     } else if (keyword === 'vn') {
       tempNormals.push(args.map(parseFloat));
     } else if (keyword === 'f') {
+      // Triangula faces que podem ser quadrados ou polígonos
       const faceVerts = args.map(f => {
         const parts = f.split('/');
         const v = parseInt(parts[0]) - 1;
+        // Se não tiver normal no arquivo, usa dummy
         const n = parts.length > 2 && parts[2] ? parseInt(parts[2]) - 1 : undefined;
         return { v, n };
       });
+      
+      // Fan triangulation (para faces com mais de 3 vertices)
       for (let i = 1; i < faceVerts.length - 1; i++) {
         const tri = [faceVerts[0], faceVerts[i], faceVerts[i + 1]];
         tri.forEach(({ v, n }) => {
           const vert = tempVertices[v];
-          const norm = n !== undefined ? tempNormals[n] : [0, 0, 1];
+          // Se não tiver normal, aponta pra cima (Y)
+          const norm = n !== undefined ? tempNormals[n] : [0, 1, 0];
           positions.push(...vert);
           normals.push(...norm);
           indices.push(indices.length);
@@ -123,179 +94,204 @@ function parseOBJ(text) {
   return { positions, normals, indices };
 }
 
-// --- VARIÁVEIS DO JOGO (SAPO) ---
-let sapoX = 0;  // Posição no Grid X (esquerda/direita)
-let sapoZ = 0;  // Posição no Grid Z (frente/trás)
-const PASSO = 5.0; // Tamanho do "pulo"
+// MATEMÁTICA (Matrix Helpers)
+const Matrix = {
+    identity: function() { return [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]; },
+    perspective: function(fovRad, aspect, near, far) {
+        const f = Math.tan(Math.PI * 0.5 - 0.5 * fovRad);
+        const rangeInv = 1.0 / (near - far);
+        return [ f/aspect,0,0,0, 0,f,0,0, 0,0,(near+far)*rangeInv,-1, 0,0,near*far*rangeInv*2,0 ];
+    },
+    lookAt: function(cameraPosition, target, up) {
+        const zAxis = normalize(subtractVectors(cameraPosition, target));
+        const xAxis = normalize(cross(up, zAxis));
+        const yAxis = normalize(cross(zAxis, xAxis));
+        return [
+            xAxis[0], yAxis[0], zAxis[0], 0,
+            xAxis[1], yAxis[1], zAxis[1], 0,
+            xAxis[2], yAxis[2], zAxis[2], 0,
+            -(xAxis[0]*cameraPosition[0] + xAxis[1]*cameraPosition[1] + xAxis[2]*cameraPosition[2]),
+            -(yAxis[0]*cameraPosition[0] + yAxis[1]*cameraPosition[1] + yAxis[2]*cameraPosition[2]),
+            -(zAxis[0]*cameraPosition[0] + zAxis[1]*cameraPosition[1] + zAxis[2]*cameraPosition[2]),
+            1
+        ];
+    },
+    translate: function(m, tx, ty, tz) {
+        return multiply(m, [1,0,0,0, 0,1,0,0, 0,0,1,0, tx,ty,tz,1]);
+    },
+    scale: function(m, sx, sy, sz) {
+        return multiply(m, [sx,0,0,0, 0,sy,0,0, 0,0,sz,0, 0,0,0,1]);
+    },
+    rotateY: function(m, angle) {
+        const c = Math.cos(angle);
+        const s = Math.sin(angle);
+        return multiply(m, [c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1]);
+    }
+};
+function normalize(v) { const l = Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]); return [v[0]/l, v[1]/l, v[2]/l]; }
+function subtractVectors(a, b) { return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
+function cross(a, b) { return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
+function multiply(a, b) {
+    const dst = [];
+    for (let i = 0; i < 4; ++i) {
+        for (let j = 0; j < 4; ++j) {
+            let s = 0; for (let k = 0; k < 4; ++k) s += a[k*4+j] * b[i*4+k]; dst[i*4+j] = s;
+        }
+    }
+    return dst;
+}
+function lerp(start, end, t) { return start * (1 - t) + end * t; }
 
-// --- FUNÇÃO PRINCIPAL ---
+// JOGO
+let sapoX = 0, sapoZ = 0;
+let targetX = 0, targetZ = 0;
+let currentX = 0, currentZ = 0;
+let currentAngle = 0, targetAngle = 0, startAngle = 0;
+let isMoving = false;
+let moveStartTime = 0;
+const MOVE_DURATION = 150;
+const PASSO = 2.0;
 
 function main() {
     const canvas = document.getElementById('gameCanvas');
     const gl = canvas.getContext('webgl');
+    if (!gl) return;
 
-    if (!gl) {
-        console.error('WebGL not supported');
-        return;
-    }
-
-    // Setup Shaders
-    const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
-    const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
-    const program = createProgram(gl, vertexShader, fragmentShader);
-    gl.useProgram(program);
-
-    // Localização das Variáveis na GPU
-    const positionLocation = gl.getAttribLocation(program, 'a_position');
-    const normalLocation = gl.getAttribLocation(program, 'a_normal');
-    
-    const colorUniformLocation = gl.getUniformLocation(program, 'u_color');
-    const modelViewMatrixUniformLocation = gl.getUniformLocation(program,'u_modelMatrix');
-    const viewingMatrixUniformLocation = gl.getUniformLocation(program,'u_viewingMatrix');
-    const projectionMatrixUniformLocation = gl.getUniformLocation(program,'u_projectionMatrix');
-    const inverseTransposeModelViewMatrixUniformLocation = gl.getUniformLocation(program, `u_inverseTransposeModelMatrix`);
-    const lightPositionUniformLocation = gl.getUniformLocation(program,'u_lightPosition');
-    const viewPositionUniformLocation = gl.getUniformLocation(program,'u_viewPosition');
-
-    // Buffers
-    const VertexBuffer = gl.createBuffer();
-    const NormalBuffer = gl.createBuffer();
-    const IndexBuffer = gl.createBuffer();
-
-    // Configuração Inicial do WebGL
+    canvas.width = 800; canvas.height = 600;
+    gl.viewport(0, 0, canvas.width, canvas.height);
     gl.enable(gl.DEPTH_TEST);
-    gl.clearColor(0.0, 0.0, 0.0, 1.0); // Fundo Preto
+    gl.clearColor(0.53, 0.81, 0.98, 1.0);
 
-    // --- INPUT (TECLADO) ---
-    const bodyElement = document.querySelector("body");
-    bodyElement.addEventListener("keydown", keyDown, false);
+    const prog = createProgram(gl, vertexShaderSource, fragmentShaderSource);
+    gl.useProgram(prog);
 
-    function keyDown(event){
-      // event.preventDefault(); // Comentei para não travar o refresh do F5
-      switch(event.key){
-        case 'w':
-        case 'ArrowUp':
-             sapoZ -= 1; // Vai para o fundo
-             break;
-        case 's':
-        case 'ArrowDown':
-             sapoZ += 1; // Vem para frente
-             break;
-        case 'a':
-        case 'ArrowLeft':
-             sapoX -= 1; // Vai para esquerda
-             break;
-        case 'd':
-        case 'ArrowRight':
-             sapoX += 1; // Vai para direita
-             break;
-        case 'c':
-             console.log("Trocar câmera (implementar depois)");
-             break;
-      }
-      console.log(`Sapo em X:${sapoX}, Z:${sapoZ}`);
+    // Carrega o SAPO
+    const sapoData = parseOBJ(frogData);
+    const sapoBuffers = createBuffers(gl, sapoData);
+
+    // Chão (Manual)
+    const floorData = {
+        positions: [-100, 0, 100, 100, 0, 100, -100, 0, -100, 100, 0, -100],
+        normals: [0,1,0, 0,1,0, 0,1,0, 0,1,0],
+        indices: [0,1,2, 2,1,3]
+    };
+    const floorBuffers = createBuffers(gl, floorData);
+
+    const loc = {
+        model: gl.getUniformLocation(prog, "u_modelMatrix"),
+        view: gl.getUniformLocation(prog, "u_viewMatrix"),
+        proj: gl.getUniformLocation(prog, "u_projectionMatrix"),
+        color: gl.getUniformLocation(prog, "u_color"),
+        light: gl.getUniformLocation(prog, "u_lightPosition"),
+        invTrans: gl.getUniformLocation(prog, "u_worldInverseTranspose")
+    };
+
+    window.addEventListener("keydown", (e) => {
+        if (isMoving) return;
+
+        let moved = false;
+        if(e.key === "w" || e.key === "ArrowUp") { 
+            targetZ -= 1; 
+            targetAngle = Math.PI / 2; // 90 graus (Frente)
+            moved = true; 
+        }
+        else if(e.key === "s" || e.key === "ArrowDown") { 
+            targetZ += 1; 
+            targetAngle = -Math.PI / 2; // -90 graus (Trás)
+            moved = true; 
+        }
+        else if(e.key === "a" || e.key === "ArrowLeft") { 
+            targetX -= 1; 
+            targetAngle = Math.PI; // 180 graus (Esquerda)
+            moved = true; 
+        }
+        else if(e.key === "d" || e.key === "ArrowRight") { 
+            targetX += 1; 
+            targetAngle = 0; // 0 graus (Direita)
+            moved = true; 
+        }
+
+        if (moved) {
+            isMoving = true;
+            moveStartTime = Date.now();
+            startX = currentX; startZ = currentZ; startAngle = currentAngle;
+            
+            // sapo gira pelo caminho mais curto
+            if (Math.abs(targetAngle - startAngle) > Math.PI) {
+                if (targetAngle > startAngle) startAngle += Math.PI * 2; 
+                else startAngle -= Math.PI * 2;
+            }
+        }
+    });
+    let startX = 0, startZ = 0;
+
+    function drawScene() {
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        let jumpY = 0;
+        if (isMoving) {
+            let t = (Date.now() - moveStartTime) / MOVE_DURATION;
+            if (t >= 1.0) { t = 1.0; isMoving = false; currentX = targetX; currentZ = targetZ; currentAngle = targetAngle; }
+            else {
+                currentX = lerp(startX, targetX, t);
+                currentZ = lerp(startZ, targetZ, t);
+                currentAngle = lerp(startAngle, targetAngle, t);
+                jumpY = Math.sin(t * Math.PI) * 1.5;
+            }
+        }
+
+        const rx = currentX * PASSO;
+        const rz = currentZ * PASSO;
+
+        const proj = Matrix.perspective(50 * Math.PI/180, canvas.width/canvas.height, 0.1, 200);
+        const view = Matrix.lookAt([rx + 15, 20, rz + 20], [rx, 0, rz], [0,1,0]);
+        
+        gl.uniformMatrix4fv(loc.proj, false, proj);
+        gl.uniformMatrix4fv(loc.view, false, view);
+        gl.uniform3fv(loc.light, [30, 50, 20]);
+
+        // Chão
+        useBuffers(gl, floorBuffers, prog);
+        gl.uniform3fv(loc.color, [0.3, 0.35, 0.4]);
+        let mFloor = Matrix.translate(Matrix.identity(), 0, -0.1, 0);
+        mFloor = Matrix.scale(mFloor, 100, 1, 100);
+        gl.uniformMatrix4fv(loc.model, false, mFloor);
+        gl.uniformMatrix4fv(loc.invTrans, false, mFloor);
+        gl.drawElements(gl.TRIANGLES, floorData.indices.length, gl.UNSIGNED_SHORT, 0);
+
+        // Sapo
+        useBuffers(gl, sapoBuffers, prog);
+        gl.uniform3fv(loc.color, [0.2, 0.8, 0.2]); // Verde
+        
+        let mSapo = Matrix.translate(Matrix.identity(), rx, jumpY, rz);
+        mSapo = Matrix.rotateY(mSapo, currentAngle);
+        
+        // Escala
+        mSapo = Matrix.scale(mSapo, 6.0, 6.0, 6.0);
+        
+        gl.uniformMatrix4fv(loc.model, false, mSapo);
+        gl.uniformMatrix4fv(loc.invTrans, false, mSapo);
+        gl.drawElements(gl.TRIANGLES, sapoData.indices.length, gl.UNSIGNED_SHORT, 0);
+
+        requestAnimationFrame(drawScene);
     }
-
-    // --- CARREGAR O MODELO ---
-    const objData = parseOBJ(teapotData); 
-
-    let objVertices = new Float32Array(objData.positions);
-    let objNormals = new Float32Array(objData.normals);
-    let objIndices = new Uint16Array(objData.indices)
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, VertexBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, objVertices, gl.STATIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER, NormalBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, objNormals, gl.STATIC_DRAW);
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, IndexBuffer);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, objIndices, gl.STATIC_DRAW);
-
-    // --- CONFIGURAÇÃO DE LUZ E COR ---
-    gl.uniform3fv(lightPositionUniformLocation, new Float32Array([40.0,40.0,40.0]));
-    let color = [1.0, 0.0, 0.0]; // Sapo Vermelho
-    gl.uniform3fv(colorUniformLocation, new Float32Array(color));
-
-    // --- PROJEÇÃO ---
-    // Ajuste da proporção para 800x600 (-15 a 15 no Y)
-    let projectionMatrix = m4.setPerspectiveProjectionMatrix(-20, 20, -15, 15, -1, -100);
-    gl.uniformMatrix4fv(projectionMatrixUniformLocation,false,projectionMatrix);
-
-    // --- LOOP DE DESENHO ---
-    function drawObj(){
-      gl.enableVertexAttribArray(positionLocation);
-      gl.bindBuffer(gl.ARRAY_BUFFER, VertexBuffer);
-      gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 0, 0);
-
-      gl.enableVertexAttribArray(normalLocation);
-      gl.bindBuffer(gl.ARRAY_BUFFER, NormalBuffer);
-      gl.vertexAttribPointer(normalLocation, 3, gl.FLOAT, false, 0, 0);
-
-      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, IndexBuffer);
-      
-      // 1. ATUALIZAR CÂMERA (SEGUIR O JOGADOR)
-      let sapoWorldX = sapoX * PASSO;
-      let sapoWorldZ = sapoZ * PASSO;
-
-      // Câmera fica atrás (+Z) e acima (+Y) do sapo
-      let P0 = [sapoWorldX, 30.0, sapoWorldZ + 40.0]; 
-      let Pref = [sapoWorldX, 0.0, sapoWorldZ];
-      let V = [0.0, 1.0, 0.0];
-      
-      let viewingMatrix = m4.setViewingMatrix(P0, Pref, V);
-      gl.uniformMatrix4fv(viewingMatrixUniformLocation, false, viewingMatrix);
-      gl.uniform3fv(viewPositionUniformLocation, new Float32Array(P0));
-
-      // 2. ATUALIZAR POSIÇÃO DO MODELO
-      let modelViewMatrix = m4.identity();
-      modelViewMatrix = m4.translate(modelViewMatrix, sapoWorldX, 0.0, sapoWorldZ);
-      modelViewMatrix = m4.scale(modelViewMatrix, 0.8, 0.8, 0.8);
-
-      let inverseTransposeModelViewMatrix = m4.transpose(m4.inverse(modelViewMatrix));
-
-      gl.uniformMatrix4fv(modelViewMatrixUniformLocation,false,modelViewMatrix);
-      gl.uniformMatrix4fv(inverseTransposeModelViewMatrixUniformLocation,false,inverseTransposeModelViewMatrix);
-      
-      gl.drawElements(gl.TRIANGLES, objIndices.length, gl.UNSIGNED_SHORT, 0);
-    }
-
-    function drawScene(){
-      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-      gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-      
-      drawObj();
-
-      requestAnimationFrame(drawScene);
-    }
-
     drawScene();
 }
 
-window.addEventListener('load', main);
-
-// --- FUNÇÕES MATEMÁTICAS AUXILIARES (NECESSÁRIAS PARA O M4.JS) ---
-
-function crossProduct(v1, v2) {
-    let result = [
-        v1[1] * v2[2] - v1[2] * v2[1],
-        v1[2] * v2[0] - v1[0] * v2[2],
-        v1[0] * v2[1] - v1[1] * v2[0]
-    ];
-    return result;
+// Helpers
+function createShader(gl, type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; }
+function createProgram(gl, vs, fs) { const p = gl.createProgram(); gl.attachShader(p, createShader(gl,gl.VERTEX_SHADER,vs)); gl.attachShader(p, createShader(gl,gl.FRAGMENT_SHADER,fs)); gl.linkProgram(p); return p; }
+function createBuffers(gl, data) {
+    const p = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, p); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data.positions), gl.STATIC_DRAW);
+    const n = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, n); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data.normals), gl.STATIC_DRAW);
+    const i = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, i); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(data.indices), gl.STATIC_DRAW);
+    return { p, n, i };
+}
+function useBuffers(gl, buf, prog) {
+    const pos = gl.getAttribLocation(prog, "a_position"); const norm = gl.getAttribLocation(prog, "a_normal");
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf.p); gl.vertexAttribPointer(pos, 3, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(pos);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf.n); gl.vertexAttribPointer(norm, 3, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(norm);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buf.i);
 }
 
-function unitVector(v){ 
-    let vModulus = vectorModulus(v);
-    return v.map(function(x) { return x/vModulus; });
-}
-
-function vectorModulus(v){
-    return Math.sqrt(Math.pow(v[0],2)+Math.pow(v[1],2)+Math.pow(v[2],2));
-}
-
-function radToDeg(r) {
-    return r * 180 / Math.PI;
-}
-
-function degToRad(d) {
-    return d * Math.PI / 180;
-}
+window.onload = main;
