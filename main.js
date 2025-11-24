@@ -1,4 +1,3 @@
-// SHADERS
 const vertexShaderSource = `
     attribute vec3 a_position;
     attribute vec3 a_normal;
@@ -47,7 +46,6 @@ const fragmentShaderSource = `
     }
 `;
 
-// PARSER OBJ
 function parseOBJ(text) {
   const positions = [];
   const normals = [];
@@ -68,21 +66,17 @@ function parseOBJ(text) {
     } else if (keyword === 'vn') {
       tempNormals.push(args.map(parseFloat));
     } else if (keyword === 'f') {
-      // Triangula faces que podem ser quadrados ou polígonos
       const faceVerts = args.map(f => {
         const parts = f.split('/');
         const v = parseInt(parts[0]) - 1;
-        // Se não tiver normal no arquivo, usa dummy
         const n = parts.length > 2 && parts[2] ? parseInt(parts[2]) - 1 : undefined;
         return { v, n };
       });
       
-      // Fan triangulation (para faces com mais de 3 vertices)
       for (let i = 1; i < faceVerts.length - 1; i++) {
         const tri = [faceVerts[0], faceVerts[i], faceVerts[i + 1]];
         tri.forEach(({ v, n }) => {
           const vert = tempVertices[v];
-          // Se não tiver normal, aponta pra cima (Y)
           const norm = n !== undefined ? tempNormals[n] : [0, 1, 0];
           positions.push(...vert);
           normals.push(...norm);
@@ -94,7 +88,6 @@ function parseOBJ(text) {
   return { positions, normals, indices };
 }
 
-// MATEMÁTICA (Matrix Helpers)
 const Matrix = {
     identity: function() { return [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]; },
     perspective: function(fovRad, aspect, near, far) {
@@ -191,23 +184,23 @@ function main() {
 
         let moved = false;
         if(e.key === "w" || e.key === "ArrowUp") { 
-            targetZ -= 1; 
-            targetAngle = Math.PI / 2; // 90 graus (Frente)
+            targetZ -= 1;
+            targetAngle = Math.PI / 2; 
             moved = true; 
         }
         else if(e.key === "s" || e.key === "ArrowDown") { 
             targetZ += 1; 
-            targetAngle = -Math.PI / 2; // -90 graus (Trás)
+            targetAngle = -Math.PI / 2; 
             moved = true; 
         }
         else if(e.key === "a" || e.key === "ArrowLeft") { 
             targetX -= 1; 
-            targetAngle = Math.PI; // 180 graus (Esquerda)
+            targetAngle = Math.PI;
             moved = true; 
         }
         else if(e.key === "d" || e.key === "ArrowRight") { 
             targetX += 1; 
-            targetAngle = 0; // 0 graus (Direita)
+            targetAngle = 0; 
             moved = true; 
         }
 
@@ -216,7 +209,6 @@ function main() {
             moveStartTime = Date.now();
             startX = currentX; startZ = currentZ; startAngle = currentAngle;
             
-            // sapo gira pelo caminho mais curto
             if (Math.abs(targetAngle - startAngle) > Math.PI) {
                 if (targetAngle > startAngle) startAngle += Math.PI * 2; 
                 else startAngle -= Math.PI * 2;
@@ -250,7 +242,6 @@ function main() {
         gl.uniformMatrix4fv(loc.view, false, view);
         gl.uniform3fv(loc.light, [30, 50, 20]);
 
-        // Chão
         useBuffers(gl, floorBuffers, prog);
         gl.uniform3fv(loc.color, [0.3, 0.35, 0.4]);
         let mFloor = Matrix.translate(Matrix.identity(), 0, -0.1, 0);
@@ -259,14 +250,13 @@ function main() {
         gl.uniformMatrix4fv(loc.invTrans, false, mFloor);
         gl.drawElements(gl.TRIANGLES, floorData.indices.length, gl.UNSIGNED_SHORT, 0);
 
-        // Sapo
+        
         useBuffers(gl, sapoBuffers, prog);
-        gl.uniform3fv(loc.color, [0.2, 0.8, 0.2]); // Verde
+        gl.uniform3fv(loc.color, [0.2, 0.8, 0.2]); 
         
         let mSapo = Matrix.translate(Matrix.identity(), rx, jumpY, rz);
         mSapo = Matrix.rotateY(mSapo, currentAngle);
         
-        // Escala
         mSapo = Matrix.scale(mSapo, 6.0, 6.0, 6.0);
         
         gl.uniformMatrix4fv(loc.model, false, mSapo);
@@ -278,7 +268,6 @@ function main() {
     drawScene();
 }
 
-// Helpers
 function createShader(gl, type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; }
 function createProgram(gl, vs, fs) { const p = gl.createProgram(); gl.attachShader(p, createShader(gl,gl.VERTEX_SHADER,vs)); gl.attachShader(p, createShader(gl,gl.FRAGMENT_SHADER,fs)); gl.linkProgram(p); return p; }
 function createBuffers(gl, data) {
