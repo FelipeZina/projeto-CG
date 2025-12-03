@@ -1,151 +1,180 @@
-const vertexShaderSource = `
-    attribute vec3 a_position;
-    attribute vec3 a_normal;
-    
-    varying vec3 v_normal;
-    varying vec3 v_surfaceToLight;
-    varying vec3 v_surfaceToView;
-    
-    uniform mat4 u_modelMatrix;
-    uniform mat4 u_viewMatrix;
-    uniform mat4 u_projectionMatrix;
-    uniform mat4 u_worldInverseTranspose;
-    uniform vec3 u_lightPosition;
-    uniform vec3 u_viewPosition;
-
-    void main() {
-        vec4 worldPosition = u_modelMatrix * vec4(a_position, 1.0);
-        gl_Position = u_projectionMatrix * u_viewMatrix * worldPosition;
+    const vertexShaderSource = `
+        attribute vec3 a_position;
+        attribute vec3 a_normal;
         
-        v_normal = mat3(u_worldInverseTranspose) * a_normal;
-        v_surfaceToLight = u_lightPosition - worldPosition.xyz;
-        v_surfaceToView = u_viewPosition - worldPosition.xyz;
-    }
-`;
+        varying vec3 v_normal;
+        varying vec3 v_surfaceToLight;
+        varying vec3 v_surfaceToView;
+        
+        uniform mat4 u_modelMatrix;
+        uniform mat4 u_viewMatrix;
+        uniform mat4 u_projectionMatrix;
+        uniform mat4 u_worldInverseTranspose;
+        uniform vec3 u_lightPosition;
+        uniform vec3 u_viewPosition;
 
-const fragmentShaderSource = `
-    precision mediump float;
-    uniform vec3 u_color;
-    varying vec3 v_normal;
-    varying vec3 v_surfaceToLight;
-    varying vec3 v_surfaceToView;
-    
-    void main() {
-        vec3 normal = normalize(v_normal);
-        vec3 surfaceToLight = normalize(v_surfaceToLight);
-        vec3 surfaceToView = normalize(v_surfaceToView);
-        vec3 halfVector = normalize(surfaceToLight + surfaceToView);
-
-        float light = max(dot(normal, surfaceToLight), 0.0);
-        float specular = 0.0;
-        if (light > 0.0) {
-            specular = pow(max(dot(normal, halfVector), 0.0), 50.0);
+        void main() {
+            vec4 worldPosition = u_modelMatrix * vec4(a_position, 1.0);
+            gl_Position = u_projectionMatrix * u_viewMatrix * worldPosition;
+            
+            v_normal = mat3(u_worldInverseTranspose) * a_normal;
+            v_surfaceToLight = u_lightPosition - worldPosition.xyz;
+            v_surfaceToView = u_viewPosition - worldPosition.xyz;
         }
+    `;
 
-        gl_FragColor = vec4(u_color * (0.4 + 0.6 * light) + (specular * 0.2), 1.0);
-    }
-`;
+    const fragmentShaderSource = `
+        precision mediump float;
+        uniform vec3 u_color;
+        varying vec3 v_normal;
+        varying vec3 v_surfaceToLight;
+        varying vec3 v_surfaceToView;
+        
+        void main() {
+            vec3 normal = normalize(v_normal);
+            vec3 surfaceToLight = normalize(v_surfaceToLight);
+            vec3 surfaceToView = normalize(v_surfaceToView);
+            vec3 halfVector = normalize(surfaceToLight + surfaceToView);
 
-function parseOBJ(text) {
-  const positions = [];
-  const normals = [];
-  const indices = [];
-  const tempVertices = [];
-  const tempNormals = [];
+            float light = max(dot(normal, surfaceToLight), 0.0);
+            float specular = 0.0;
+            if (light > 0.0) {
+                specular = pow(max(dot(normal, halfVector), 0.0), 50.0);
+            }
 
-  const lines = text.split('\n');
-  for (let line of lines) {
-    line = line.trim();
-    if (line.startsWith('#') || line === '') continue;
-    const parts = line.split(/\s+/);
-    const keyword = parts[0];
-    const args = parts.slice(1);
+            gl_FragColor = vec4(u_color * (0.4 + 0.6 * light) + (specular * 0.2), 1.0);
+        }
+    `;
 
-    if (keyword === 'v') {
-      tempVertices.push(args.map(parseFloat));
-    } else if (keyword === 'vn') {
-      tempNormals.push(args.map(parseFloat));
-    } else if (keyword === 'f') {
-      const faceVerts = args.map(f => {
-        const parts = f.split('/');
-        const v = parseInt(parts[0]) - 1;
-        const n = parts.length > 2 && parts[2] ? parseInt(parts[2]) - 1 : undefined;
-        return { v, n };
-      });
-      
-      for (let i = 1; i < faceVerts.length - 1; i++) {
-        const tri = [faceVerts[0], faceVerts[i], faceVerts[i + 1]];
-        tri.forEach(({ v, n }) => {
-          const vert = tempVertices[v];
-          const norm = n !== undefined ? tempNormals[n] : [0, 1, 0];
-          positions.push(...vert);
-          normals.push(...norm);
-          indices.push(indices.length);
+    function parseOBJ(text) {
+    const positions = [];
+    const normals = [];
+    const indices = [];
+    const tempVertices = [];
+    const tempNormals = [];
+
+    const lines = text.split('\n');
+    for (let line of lines) {
+        line = line.trim();
+        if (line.startsWith('#') || line === '') continue;
+        const parts = line.split(/\s+/);
+        const keyword = parts[0];
+        const args = parts.slice(1);
+
+        if (keyword === 'v') {
+        tempVertices.push(args.map(parseFloat));
+        } else if (keyword === 'vn') {
+        tempNormals.push(args.map(parseFloat));
+        } else if (keyword === 'f') {
+        const faceVerts = args.map(f => {
+            const parts = f.split('/');
+            const v = parseInt(parts[0]) - 1;
+            const n = parts.length > 2 && parts[2] ? parseInt(parts[2]) - 1 : undefined;
+            return { v, n };
         });
-      }
-    }
-  }
-  return { positions, normals, indices };
-}
-
-const Matrix = {
-    identity: function() { return [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]; },
-    perspective: function(fovRad, aspect, near, far) {
-        const f = Math.tan(Math.PI * 0.5 - 0.5 * fovRad);
-        const rangeInv = 1.0 / (near - far);
-        return [ f/aspect,0,0,0, 0,f,0,0, 0,0,(near+far)*rangeInv,-1, 0,0,near*far*rangeInv*2,0 ];
-    },
-    lookAt: function(cameraPosition, target, up) {
-        const zAxis = normalize(subtractVectors(cameraPosition, target));
-        const xAxis = normalize(cross(up, zAxis));
-        const yAxis = normalize(cross(zAxis, xAxis));
-        return [
-            xAxis[0], yAxis[0], zAxis[0], 0,
-            xAxis[1], yAxis[1], zAxis[1], 0,
-            xAxis[2], yAxis[2], zAxis[2], 0,
-            -(xAxis[0]*cameraPosition[0] + xAxis[1]*cameraPosition[1] + xAxis[2]*cameraPosition[2]),
-            -(yAxis[0]*cameraPosition[0] + yAxis[1]*cameraPosition[1] + yAxis[2]*cameraPosition[2]),
-            -(zAxis[0]*cameraPosition[0] + zAxis[1]*cameraPosition[1] + zAxis[2]*cameraPosition[2]),
-            1
-        ];
-    },
-    translate: function(m, tx, ty, tz) {
-        return multiply(m, [1,0,0,0, 0,1,0,0, 0,0,1,0, tx,ty,tz,1]);
-    },
-    scale: function(m, sx, sy, sz) {
-        return multiply(m, [sx,0,0,0, 0,sy,0,0, 0,0,sz,0, 0,0,0,1]);
-    },
-    rotateY: function(m, angle) {
-        const c = Math.cos(angle);
-        const s = Math.sin(angle);
-        return multiply(m, [c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1]);
-    }
-};
-function normalize(v) { const l = Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]); return [v[0]/l, v[1]/l, v[2]/l]; }
-function subtractVectors(a, b) { return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
-function cross(a, b) { return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
-function multiply(a, b) {
-    const dst = [];
-    for (let i = 0; i < 4; ++i) {
-        for (let j = 0; j < 4; ++j) {
-            let s = 0; for (let k = 0; k < 4; ++k) s += a[k*4+j] * b[i*4+k]; dst[i*4+j] = s;
+        
+        for (let i = 1; i < faceVerts.length - 1; i++) {
+            const tri = [faceVerts[0], faceVerts[i], faceVerts[i + 1]];
+            tri.forEach(({ v, n }) => {
+            const vert = tempVertices[v];
+            const norm = n !== undefined ? tempNormals[n] : [0, 1, 0];
+            positions.push(...vert);
+            normals.push(...norm);
+            indices.push(indices.length);
+            });
+        }
         }
     }
-    return dst;
+    return { positions, normals, indices };
+    }
+
+    const Matrix = {
+        identity: function() { return [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]; },
+        perspective: function(fovRad, aspect, near, far) {
+            const f = Math.tan(Math.PI * 0.5 - 0.5 * fovRad);
+            const rangeInv = 1.0 / (near - far);
+            return [ f/aspect,0,0,0, 0,f,0,0, 0,0,(near+far)*rangeInv,-1, 0,0,near*far*rangeInv*2,0 ];
+        },
+        lookAt: function(cameraPosition, target, up) {
+            const zAxis = normalize(subtractVectors(cameraPosition, target));
+            const xAxis = normalize(cross(up, zAxis));
+            const yAxis = normalize(cross(zAxis, xAxis));
+            return [
+                xAxis[0], yAxis[0], zAxis[0], 0,
+                xAxis[1], yAxis[1], zAxis[1], 0,
+                xAxis[2], yAxis[2], zAxis[2], 0,
+                -(xAxis[0]*cameraPosition[0] + xAxis[1]*cameraPosition[1] + xAxis[2]*cameraPosition[2]),
+                -(yAxis[0]*cameraPosition[0] + yAxis[1]*cameraPosition[1] + yAxis[2]*cameraPosition[2]),
+                -(zAxis[0]*cameraPosition[0] + zAxis[1]*cameraPosition[1] + zAxis[2]*cameraPosition[2]),
+                1
+            ];
+        },
+        translate: function(m, tx, ty, tz) {
+            return multiply(m, [1,0,0,0, 0,1,0,0, 0,0,1,0, tx,ty,tz,1]);
+        },
+        scale: function(m, sx, sy, sz) {
+            return multiply(m, [sx,0,0,0, 0,sy,0,0, 0,0,sz,0, 0,0,0,1]);
+        },
+        rotateY: function(m, angle) {
+            const c = Math.cos(angle);
+            const s = Math.sin(angle);
+            return multiply(m, [c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1]);
+        }
+    };
+    function normalize(v) { const l = Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]); return [v[0]/l, v[1]/l, v[2]/l]; }
+    function subtractVectors(a, b) { return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
+    function cross(a, b) { return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
+    function multiply(a, b) {
+        const dst = [];
+        for (let i = 0; i < 4; ++i) {
+            for (let j = 0; j < 4; ++j) {
+                let s = 0; for (let k = 0; k < 4; ++k) s += a[k*4+j] * b[i*4+k]; dst[i*4+j] = s;
+            }
+        }
+        return dst;
+    }
+    function lerp(start, end, t) { return start * (1 - t) + end * t; }
+
+    // JOGO
+    let sapoX = 0, sapoZ = 0;
+    let targetX = 0, targetZ = 0;
+    let currentX = 0, currentZ = 0;
+    let currentAngle = 0, targetAngle = 0, startAngle = 0;
+    let isMoving = false;
+    let moveStartTime = 0;
+    const MOVE_DURATION = 150;
+    const PASSO = 2.0;
+    let obstaculos = [];
+    let moedas = []; // Nova lista para as moedas
+    let score = 0;
+function gerarMapa() {
+    obstaculos = [];
+    moedas = []; // Limpa moedas antigas
+    
+    for (let z = -10; z <= 50; z++) {
+        if (z >= -2 && z <= 3) continue; // Área segura
+        if (z % 2 !== 0) continue; // Faixas alternadas
+
+        for (let x = -10; x <= 10; x++) {
+            let densidade = 0.4; 
+
+            if (Math.random() < densidade) {
+                // CRIAR OBSTÁCULO
+                let tipo = Math.random() < 0.7 ? 'tree' : 'rock';
+                obstaculos.push({ x: x, z: z, type: tipo });
+            } else {
+                // CRIAR MOEDA (Se o espaço estiver livre)
+                // 10% de chance de aparecer uma moeda em espaço vazio
+                if (Math.random() < 0.1) {
+                    // 'active: true' serve para saber se ela ainda não foi pega
+                    moedas.push({ x: x, z: z, active: true });
+                }
+            }
+        }
+    }
 }
-function lerp(start, end, t) { return start * (1 - t) + end * t; }
 
-// JOGO
-let sapoX = 0, sapoZ = 0;
-let targetX = 0, targetZ = 0;
-let currentX = 0, currentZ = 0;
-let currentAngle = 0, targetAngle = 0, startAngle = 0;
-let isMoving = false;
-let moveStartTime = 0;
-const MOVE_DURATION = 150;
-const PASSO = 2.0;
-
-function main() {
+   function main() {
     const canvas = document.getElementById('gameCanvas');
     const gl = canvas.getContext('webgl');
     if (!gl) return;
@@ -158,17 +187,60 @@ function main() {
     const prog = createProgram(gl, vertexShaderSource, fragmentShaderSource);
     gl.useProgram(prog);
 
-    // Carrega o SAPO
+    // --- CARREGAMENTO DOS MODELOS ---
+    // Certifique-se que frogData, arvore e rockData estão no objeto.js
+    
+    // 1. Sapo
     const sapoData = parseOBJ(frogData);
     const sapoBuffers = createBuffers(gl, sapoData);
+    
+    // 2. Árvore (A variável que você colou no chat se chama 'arvore')
+    const treeDataObj = parseOBJ(arvore); 
+    const treeBuffers = createBuffers(gl, treeDataObj);
+    
+    // 3. Rocha (Verifique se no objeto.js se chama 'rockData' ou 'rocha')
+    // Vou usar 'rockData' que é o padrão que combinamos
+    const rockDataObj = parseOBJ(rocha); 
+    const rockBuffers = createBuffers(gl, rockDataObj);
 
-    // Chão (Manual)
+    const coinDataObj = parseOBJ(moeda);
+    const coinBuffers = createBuffers(gl, coinDataObj);
+    
+    const heroDataObj = parseOBJ(heroi); 
+    const heroBuffers = createBuffers(gl, heroDataObj);
+
+    
+    // Variável de controle: 'sapo' ou 'heroi'
+    let currentCharacter = 'sapo';
+    // 4. Chão
+
+
     const floorData = {
         positions: [-100, 0, 100, 100, 0, 100, -100, 0, -100, 100, 0, -100],
         normals: [0,1,0, 0,1,0, 0,1,0, 0,1,0],
         indices: [0,1,2, 2,1,3]
     };
     const floorBuffers = createBuffers(gl, floorData);
+
+    // --- LÓGICA DO BOTÃO DE TROCA ---
+    const charBtn = document.getElementById("charBtn");
+    
+    charBtn.addEventListener("click", () => {
+        // Se clicar, inverte o personagem
+        if (currentCharacter === 'sapo') {
+            currentCharacter = 'heroi';
+            // Tira o foco do botão para não atrapalhar o WASD
+            charBtn.blur(); 
+            console.log("Trocou para Herói!");
+        } else {
+            currentCharacter = 'sapo';
+            charBtn.blur();
+            console.log("Trocou para Sapo!");
+        }
+    });
+    // --- GERA O MAPA ---
+    // (Removemos o loop for antigo daqui)
+    gerarMapa(); 
 
     const loc = {
         model: gl.getUniformLocation(prog, "u_modelMatrix"),
@@ -182,29 +254,59 @@ function main() {
     window.addEventListener("keydown", (e) => {
         if (isMoving) return;
 
-        let moved = false;
+        // 1. Calcular a PRÓXIMA posição
+        let proximoX = targetX;
+        let proximoZ = targetZ;
+        let novoAngulo = targetAngle;
+        let tentouMover = false;
+
         if(e.key === "w" || e.key === "ArrowUp") { 
-            targetZ -= 1;
-            targetAngle = Math.PI / 2; 
-            moved = true; 
+            proximoZ -= 1; novoAngulo = Math.PI / 2; tentouMover = true;
         }
         else if(e.key === "s" || e.key === "ArrowDown") { 
-            targetZ += 1; 
-            targetAngle = -Math.PI / 2; 
-            moved = true; 
+            proximoZ += 1; novoAngulo = -Math.PI / 2; tentouMover = true;
         }
         else if(e.key === "a" || e.key === "ArrowLeft") { 
-            targetX -= 1; 
-            targetAngle = Math.PI;
-            moved = true; 
+            proximoX -= 1; novoAngulo = Math.PI; tentouMover = true;
         }
         else if(e.key === "d" || e.key === "ArrowRight") { 
-            targetX += 1; 
-            targetAngle = 0; 
-            moved = true; 
+            proximoX += 1; novoAngulo = 0; tentouMover = true;
         }
 
-        if (moved) {
+        if (tentouMover) {
+            // VERIFICAR COLISÃO
+            const bateu = obstaculos.find(obs => obs.x === proximoX && obs.z === proximoZ);
+
+            if (bateu) {
+                console.log("Bateu! Bloqueado.");
+                return; 
+            }
+
+            // Caminho livre
+            targetX = proximoX;
+            targetZ = proximoZ;
+            targetAngle = novoAngulo;
+            const moedaIndex = moedas.findIndex(c => c.x === targetX && c.z === targetZ && c.active);
+
+            if (moedaIndex !== -1) {
+                // ACHOU UMA MOEDA!
+                console.log("Moeda coletada!");
+                
+                // 1. Desativa a moeda (para ela parar de ser desenhada)
+                moedas[moedaIndex].active = false;
+                
+                // 2. Aumenta Pontuação
+                score += 10;
+                
+                // 3. Atualiza o HTML (Placar)
+                document.getElementById("score").innerText = score;
+                
+                // 4. Verifica o desbloqueio do personagem (Lógica futura)
+                if (score >= 20) {
+                    // Mostra o botão
+                    document.getElementById("charBtn").style.display = "block";
+                }
+            }
             isMoving = true;
             moveStartTime = Date.now();
             startX = currentX; startZ = currentZ; startAngle = currentAngle;
@@ -215,6 +317,7 @@ function main() {
             }
         }
     });
+
     let startX = 0, startZ = 0;
 
     function drawScene() {
@@ -242,6 +345,8 @@ function main() {
         gl.uniformMatrix4fv(loc.view, false, view);
         gl.uniform3fv(loc.light, [30, 50, 20]);
 
+        // --- DESENHO DO CHÃO (LISTRAS) ---
+        // (Aqui mantivemos o chão simples, mas podemos colocar as listras depois)
         useBuffers(gl, floorBuffers, prog);
         gl.uniform3fv(loc.color, [0.3, 0.35, 0.4]);
         let mFloor = Matrix.translate(Matrix.identity(), 0, -0.1, 0);
@@ -250,37 +355,101 @@ function main() {
         gl.uniformMatrix4fv(loc.invTrans, false, mFloor);
         gl.drawElements(gl.TRIANGLES, floorData.indices.length, gl.UNSIGNED_SHORT, 0);
 
+// --- DESENHO DO PERSONAGEM (SAPO ou HERÓI) ---
         
-        useBuffers(gl, sapoBuffers, prog);
-        gl.uniform3fv(loc.color, [0.2, 0.8, 0.2]); 
+        let buffersToUse;
+        let indicesCount;
+        let charColor;
+        let charScale;
+
+        // Decide qual modelo usar baseado na variável
+        if (currentCharacter === 'sapo') {
+            buffersToUse = sapoBuffers;
+            indicesCount = sapoData.indices.length;
+            charColor = [0.2, 0.8, 0.2]; // Verde Sapo
+            charScale = 6.0;             // Escala do Sapo
+        } else {
+            buffersToUse = heroBuffers;
+            indicesCount = heroDataObj.indices.length;
+            charColor = [0.2, 0.2, 0.9]; // Azul Herói (ou a cor que preferir)
+            charScale = 2.0;             // Ajuste a escala do Herói se ele for grande/pequeno
+        }
+
+        // Configura e Desenha
+        useBuffers(gl, buffersToUse, prog);
+        gl.uniform3fv(loc.color, charColor); 
         
-        let mSapo = Matrix.translate(Matrix.identity(), rx, jumpY, rz);
-        mSapo = Matrix.rotateY(mSapo, currentAngle);
+        let mChar = Matrix.translate(Matrix.identity(), rx, jumpY, rz);
+        mChar = Matrix.rotateY(mChar, currentAngle);
+        mChar = Matrix.scale(mChar, charScale, charScale, charScale);
         
-        mSapo = Matrix.scale(mSapo, 6.0, 6.0, 6.0);
+        gl.uniformMatrix4fv(loc.model, false, mChar);
+        gl.uniformMatrix4fv(loc.invTrans, false, mChar);
+        gl.drawElements(gl.TRIANGLES, indicesCount, gl.UNSIGNED_SHORT, 0);
+// --- DESENHO DAS ÁRVORES ---
+        useBuffers(gl, treeBuffers, prog);
+        gl.uniform3fv(loc.color, [0.13, 0.55, 0.13]); 
+
+        for (const obs of obstaculos) {
+            if (obs.type === 'tree') {
+                let mTree = Matrix.translate(Matrix.identity(), obs.x * PASSO, 0, obs.z * PASSO);
+                mTree = Matrix.scale(mTree, 2.0, 2.0, 2.0); 
+                
+                gl.uniformMatrix4fv(loc.model, false, mTree);
+                gl.uniformMatrix4fv(loc.invTrans, false, mTree);
+                gl.drawElements(gl.TRIANGLES, treeDataObj.indices.length, gl.UNSIGNED_SHORT, 0);
+            }
+        }
+
+        // --- DESENHO DAS ROCHAS (O QUE FALTAVA!) ---
+        useBuffers(gl, rockBuffers, prog); // 1. Troca para buffer da Rocha
+        gl.uniform3fv(loc.color, [0.5, 0.5, 0.55]); // 2. Cor Cinza
+
+        for (const obs of obstaculos) {
+            if (obs.type === 'rock') {
+                let mRock = Matrix.translate(Matrix.identity(), obs.x * PASSO, 0, obs.z * PASSO);
+                mRock = Matrix.scale(mRock, 1.5, 1.0, 1.5); 
+
+                gl.uniformMatrix4fv(loc.model, false, mRock);
+                gl.uniformMatrix4fv(loc.invTrans, false, mRock);
+                gl.drawElements(gl.TRIANGLES, rockDataObj.indices.length, gl.UNSIGNED_SHORT, 0);
+            }
+        }
+
+        // --- DESENHO DAS MOEDAS ---
+        useBuffers(gl, coinBuffers, prog); // 1. Ativa buffer Moeda
+        gl.uniform3fv(loc.color, [1.0, 0.84, 0.0]); // 2. Cor Ouro
         
-        gl.uniformMatrix4fv(loc.model, false, mSapo);
-        gl.uniformMatrix4fv(loc.invTrans, false, mSapo);
-        gl.drawElements(gl.TRIANGLES, sapoData.indices.length, gl.UNSIGNED_SHORT, 0);
+        let anguloMoeda = (Date.now() / 1000) * 3.0; 
+        for (const c of moedas) {
+            if (c.active) {
+                let mCoin = Matrix.translate(Matrix.identity(), c.x * PASSO, 0.5, c.z * PASSO);
+                mCoin = Matrix.rotateY(mCoin, anguloMoeda);
+                mCoin = Matrix.scale(mCoin, 0.5, 0.5, 0.5); 
+
+                gl.uniformMatrix4fv(loc.model, false, mCoin);
+                gl.uniformMatrix4fv(loc.invTrans, false, mCoin);
+                gl.drawElements(gl.TRIANGLES, coinDataObj.indices.length, gl.UNSIGNED_SHORT, 0);
+            }
+        } 
 
         requestAnimationFrame(drawScene);
     }
     drawScene();
 }
+    function createShader(gl, type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; }
+    function createProgram(gl, vs, fs) { const p = gl.createProgram(); gl.attachShader(p, createShader(gl,gl.VERTEX_SHADER,vs)); gl.attachShader(p, createShader(gl,gl.FRAGMENT_SHADER,fs)); gl.linkProgram(p); return p; }
+    function createBuffers(gl, data) {
+        const p = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, p); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data.positions), gl.STATIC_DRAW);
+        const n = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, n); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data.normals), gl.STATIC_DRAW);
+        const i = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, i); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(data.indices), gl.STATIC_DRAW);
+        return { p, n, i };
+    }
+    function useBuffers(gl, buf, prog) {
+        const pos = gl.getAttribLocation(prog, "a_position"); const norm = gl.getAttribLocation(prog, "a_normal");
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf.p); gl.vertexAttribPointer(pos, 3, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(pos);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf.n); gl.vertexAttribPointer(norm, 3, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(norm);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buf.i);
+    }
 
-function createShader(gl, type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; }
-function createProgram(gl, vs, fs) { const p = gl.createProgram(); gl.attachShader(p, createShader(gl,gl.VERTEX_SHADER,vs)); gl.attachShader(p, createShader(gl,gl.FRAGMENT_SHADER,fs)); gl.linkProgram(p); return p; }
-function createBuffers(gl, data) {
-    const p = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, p); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data.positions), gl.STATIC_DRAW);
-    const n = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, n); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data.normals), gl.STATIC_DRAW);
-    const i = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, i); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(data.indices), gl.STATIC_DRAW);
-    return { p, n, i };
-}
-function useBuffers(gl, buf, prog) {
-    const pos = gl.getAttribLocation(prog, "a_position"); const norm = gl.getAttribLocation(prog, "a_normal");
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf.p); gl.vertexAttribPointer(pos, 3, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(pos);
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf.n); gl.vertexAttribPointer(norm, 3, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(norm);
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buf.i);
-}
-
-window.onload = main;
+    window.onload = main;
