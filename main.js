@@ -1,172 +1,170 @@
-    const vertexShaderSource = `
-        attribute vec3 a_position;
-        attribute vec3 a_normal;
-        
-        varying vec3 v_normal;
-        varying vec3 v_surfaceToLight;
-        varying vec3 v_surfaceToView;
-        
-        uniform mat4 u_modelMatrix;
-        uniform mat4 u_viewMatrix;
-        uniform mat4 u_projectionMatrix;
-        uniform mat4 u_worldInverseTranspose;
-        uniform vec3 u_lightPosition;
-        uniform vec3 u_viewPosition;
+// main.js - VERSÃO FINAL (Chão Cinza + Letras Destacadas)
 
-        void main() {
-            vec4 worldPosition = u_modelMatrix * vec4(a_position, 1.0);
-            gl_Position = u_projectionMatrix * u_viewMatrix * worldPosition;
-            
-            v_normal = mat3(u_worldInverseTranspose) * a_normal;
-            v_surfaceToLight = u_lightPosition - worldPosition.xyz;
-            v_surfaceToView = u_viewPosition - worldPosition.xyz;
+const vertexShaderSource = `
+    attribute vec3 a_position;
+    attribute vec3 a_normal;
+    
+    varying vec3 v_normal;
+    varying vec3 v_surfaceToLight;
+    varying vec3 v_surfaceToView;
+    
+    uniform mat4 u_modelMatrix;
+    uniform mat4 u_viewMatrix;
+    uniform mat4 u_projectionMatrix;
+    uniform mat4 u_worldInverseTranspose;
+    uniform vec3 u_lightPosition;
+    uniform vec3 u_viewPosition;
+
+    void main() {
+        vec4 worldPosition = u_modelMatrix * vec4(a_position, 1.0);
+        gl_Position = u_projectionMatrix * u_viewMatrix * worldPosition;
+        
+        v_normal = mat3(u_worldInverseTranspose) * a_normal;
+        v_surfaceToLight = u_lightPosition - worldPosition.xyz;
+        v_surfaceToView = u_viewPosition - worldPosition.xyz;
+    }
+`;
+
+const fragmentShaderSource = `
+    precision mediump float;
+    uniform vec3 u_color;
+    varying vec3 v_normal;
+    varying vec3 v_surfaceToLight;
+    varying vec3 v_surfaceToView;
+    
+    void main() {
+        vec3 normal = normalize(v_normal);
+        vec3 surfaceToLight = normalize(v_surfaceToLight);
+        vec3 surfaceToView = normalize(v_surfaceToView);
+        vec3 halfVector = normalize(surfaceToLight + surfaceToView);
+
+        float light = max(dot(normal, surfaceToLight), 0.0);
+        float specular = 0.0;
+        if (light > 0.0) {
+            specular = pow(max(dot(normal, halfVector), 0.0), 50.0);
         }
-    `;
 
-    const fragmentShaderSource = `
-        precision mediump float;
-        uniform vec3 u_color;
-        varying vec3 v_normal;
-        varying vec3 v_surfaceToLight;
-        varying vec3 v_surfaceToView;
-        
-        void main() {
-            vec3 normal = normalize(v_normal);
-            vec3 surfaceToLight = normalize(v_surfaceToLight);
-            vec3 surfaceToView = normalize(v_surfaceToView);
-            vec3 halfVector = normalize(surfaceToLight + surfaceToView);
+        gl_FragColor = vec4(u_color * (0.4 + 0.6 * light) + (specular * 0.2), 1.0);
+    }
+`;
 
-            float light = max(dot(normal, surfaceToLight), 0.0);
-            float specular = 0.0;
-            if (light > 0.0) {
-                specular = pow(max(dot(normal, halfVector), 0.0), 50.0);
-            }
+function parseOBJ(text) {
+  const positions = [];
+  const normals = [];
+  const indices = [];
+  const tempVertices = [];
+  const tempNormals = [];
 
-            gl_FragColor = vec4(u_color * (0.4 + 0.6 * light) + (specular * 0.2), 1.0);
-        }
-    `;
+  const lines = text.split('\n');
+  for (let line of lines) {
+    line = line.trim();
+    if (line.startsWith('#') || line === '') continue;
+    const parts = line.split(/\s+/);
+    const keyword = parts[0];
+    const args = parts.slice(1);
 
-    function parseOBJ(text) {
-    const positions = [];
-    const normals = [];
-    const indices = [];
-    const tempVertices = [];
-    const tempNormals = [];
-
-    const lines = text.split('\n');
-    for (let line of lines) {
-        line = line.trim();
-        if (line.startsWith('#') || line === '') continue;
-        const parts = line.split(/\s+/);
-        const keyword = parts[0];
-        const args = parts.slice(1);
-
-        if (keyword === 'v') {
-        tempVertices.push(args.map(parseFloat));
-        } else if (keyword === 'vn') {
-        tempNormals.push(args.map(parseFloat));
-        } else if (keyword === 'f') {
-        const faceVerts = args.map(f => {
-            const parts = f.split('/');
-            const v = parseInt(parts[0]) - 1;
-            const n = parts.length > 2 && parts[2] ? parseInt(parts[2]) - 1 : undefined;
-            return { v, n };
+    if (keyword === 'v') {
+      tempVertices.push(args.map(parseFloat));
+    } else if (keyword === 'vn') {
+      tempNormals.push(args.map(parseFloat));
+    } else if (keyword === 'f') {
+      const faceVerts = args.map(f => {
+        const parts = f.split('/');
+        const v = parseInt(parts[0]) - 1;
+        const n = parts.length > 2 && parts[2] ? parseInt(parts[2]) - 1 : undefined;
+        return { v, n };
+      });
+      for (let i = 1; i < faceVerts.length - 1; i++) {
+        const tri = [faceVerts[0], faceVerts[i], faceVerts[i + 1]];
+        tri.forEach(({ v, n }) => {
+          const vert = tempVertices[v];
+          const norm = n !== undefined ? tempNormals[n] : [0, 1, 0];
+          positions.push(...vert);
+          normals.push(...norm);
+          indices.push(indices.length);
         });
-        
-        for (let i = 1; i < faceVerts.length - 1; i++) {
-            const tri = [faceVerts[0], faceVerts[i], faceVerts[i + 1]];
-            tri.forEach(({ v, n }) => {
-            const vert = tempVertices[v];
-            const norm = n !== undefined ? tempNormals[n] : [0, 1, 0];
-            positions.push(...vert);
-            normals.push(...norm);
-            indices.push(indices.length);
-            });
-        }
-        }
+      }
     }
-    return { positions, normals, indices };
-    }
+  }
+  return { positions, normals, indices };
+}
 
-    const Matrix = {
-        identity: function() { return [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]; },
-        perspective: function(fovRad, aspect, near, far) {
-            const f = Math.tan(Math.PI * 0.5 - 0.5 * fovRad);
-            const rangeInv = 1.0 / (near - far);
-            return [ f/aspect,0,0,0, 0,f,0,0, 0,0,(near+far)*rangeInv,-1, 0,0,near*far*rangeInv*2,0 ];
-        },
-        lookAt: function(cameraPosition, target, up) {
-            const zAxis = normalize(subtractVectors(cameraPosition, target));
-            const xAxis = normalize(cross(up, zAxis));
-            const yAxis = normalize(cross(zAxis, xAxis));
-            return [
-                xAxis[0], yAxis[0], zAxis[0], 0,
-                xAxis[1], yAxis[1], zAxis[1], 0,
-                xAxis[2], yAxis[2], zAxis[2], 0,
-                -(xAxis[0]*cameraPosition[0] + xAxis[1]*cameraPosition[1] + xAxis[2]*cameraPosition[2]),
-                -(yAxis[0]*cameraPosition[0] + yAxis[1]*cameraPosition[1] + yAxis[2]*cameraPosition[2]),
-                -(zAxis[0]*cameraPosition[0] + zAxis[1]*cameraPosition[1] + zAxis[2]*cameraPosition[2]),
-                1
-            ];
-        },
-        translate: function(m, tx, ty, tz) {
-            return multiply(m, [1,0,0,0, 0,1,0,0, 0,0,1,0, tx,ty,tz,1]);
-        },
-        scale: function(m, sx, sy, sz) {
-            return multiply(m, [sx,0,0,0, 0,sy,0,0, 0,0,sz,0, 0,0,0,1]);
-        },
-        rotateY: function(m, angle) {
-            const c = Math.cos(angle);
-            const s = Math.sin(angle);
-            return multiply(m, [c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1]);
-        }
-    };
-    function normalize(v) { const l = Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]); return [v[0]/l, v[1]/l, v[2]/l]; }
-    function subtractVectors(a, b) { return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
-    function cross(a, b) { return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
-    function multiply(a, b) {
-        const dst = [];
-        for (let i = 0; i < 4; ++i) {
-            for (let j = 0; j < 4; ++j) {
-                let s = 0; for (let k = 0; k < 4; ++k) s += a[k*4+j] * b[i*4+k]; dst[i*4+j] = s;
-            }
-        }
-        return dst;
+const Matrix = {
+    identity: function() { return [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]; },
+    perspective: function(fovRad, aspect, near, far) {
+        const f = Math.tan(Math.PI * 0.5 - 0.5 * fovRad);
+        const rangeInv = 1.0 / (near - far);
+        return [ f/aspect,0,0,0, 0,f,0,0, 0,0,(near+far)*rangeInv,-1, 0,0,near*far*rangeInv*2,0 ];
+    },
+    lookAt: function(cameraPosition, target, up) {
+        const zAxis = normalize(subtractVectors(cameraPosition, target));
+        const xAxis = normalize(cross(up, zAxis));
+        const yAxis = normalize(cross(zAxis, xAxis));
+        return [
+            xAxis[0], yAxis[0], zAxis[0], 0,
+            xAxis[1], yAxis[1], zAxis[1], 0,
+            xAxis[2], yAxis[2], zAxis[2], 0,
+            -(xAxis[0]*cameraPosition[0] + xAxis[1]*cameraPosition[1] + xAxis[2]*cameraPosition[2]),
+            -(yAxis[0]*cameraPosition[0] + yAxis[1]*cameraPosition[1] + yAxis[2]*cameraPosition[2]),
+            -(zAxis[0]*cameraPosition[0] + zAxis[1]*cameraPosition[1] + zAxis[2]*cameraPosition[2]),
+            1
+        ];
+    },
+    translate: function(m, tx, ty, tz) {
+        return multiply(m, [1,0,0,0, 0,1,0,0, 0,0,1,0, tx,ty,tz,1]);
+    },
+    scale: function(m, sx, sy, sz) {
+        return multiply(m, [sx,0,0,0, 0,sy,0,0, 0,0,sz,0, 0,0,0,1]);
+    },
+    rotateY: function(m, angle) {
+        const c = Math.cos(angle);
+        const s = Math.sin(angle);
+        return multiply(m, [c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1]);
     }
-    function lerp(start, end, t) { return start * (1 - t) + end * t; }
+};
+function normalize(v) { const l = Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]); return [v[0]/l, v[1]/l, v[2]/l]; }
+function subtractVectors(a, b) { return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
+function cross(a, b) { return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
+function multiply(a, b) {
+    const dst = [];
+    for (let i = 0; i < 4; ++i) {
+        for (let j = 0; j < 4; ++j) {
+            let s = 0; for (let k = 0; k < 4; ++k) s += a[k*4+j] * b[i*4+k]; dst[i*4+j] = s;
+        }
+    }
+    return dst;
+}
+function lerp(start, end, t) { return start * (1 - t) + end * t; }
 
-    // JOGO
-    let sapoX = 0, sapoZ = 0;
-    let targetX = 0, targetZ = 0;
-    let currentX = 0, currentZ = 0;
-    let currentAngle = 0, targetAngle = 0, startAngle = 0;
-    let isMoving = false;
-    let moveStartTime = 0;
-    const MOVE_DURATION = 150;
-    const PASSO = 2.0;
-    let obstaculos = [];
-    let moedas = []; // Nova lista para as moedas
-    let score = 0;
+// JOGO
+let sapoX = 0, sapoZ = 0;
+let targetX = 0, targetZ = 0;
+let currentX = 0, currentZ = 0;
+let currentAngle = 0, targetAngle = 0, startAngle = 0;
+let isMoving = false;
+let moveStartTime = 0;
+const MOVE_DURATION = 150;
+const PASSO = 2.0;
+let obstaculos = [];
+let moedas = [];
+let score = 0;
+
 function gerarMapa() {
     obstaculos = [];
-    moedas = []; // Limpa moedas antigas
+    moedas = [];
     
     for (let z = -10; z <= 50; z++) {
-        if (z >= -2 && z <= 3) continue; // Área segura
-        if (z % 2 !== 0) continue; // Faixas alternadas
+        if (z >= -2 && z <= 3) continue; 
+        if (z % 2 !== 0) continue; 
 
         for (let x = -10; x <= 10; x++) {
             let densidade = 0.4; 
 
             if (Math.random() < densidade) {
-                // CRIAR OBSTÁCULO
                 let tipo = Math.random() < 0.7 ? 'tree' : 'rock';
                 obstaculos.push({ x: x, z: z, type: tipo });
             } else {
-                // CRIAR MOEDA (Se o espaço estiver livre)
-                // 10% de chance de aparecer uma moeda em espaço vazio
                 if (Math.random() < 0.1) {
-                    // 'active: true' serve para saber se ela ainda não foi pega
                     moedas.push({ x: x, z: z, active: true });
                 }
             }
@@ -174,7 +172,7 @@ function gerarMapa() {
     }
 }
 
-   function main() {
+function main() {
     const canvas = document.getElementById('gameCanvas');
     const gl = canvas.getContext('webgl');
     if (!gl) return;
@@ -188,33 +186,36 @@ function gerarMapa() {
     gl.useProgram(prog);
 
     // --- CARREGAMENTO DOS MODELOS ---
-    // Certifique-se que frogData, arvore e rockData estão no objeto.js
     
     // 1. Sapo
     const sapoData = parseOBJ(frogData);
     const sapoBuffers = createBuffers(gl, sapoData);
     
-    // 2. Árvore (A variável que você colou no chat se chama 'arvore')
-    const treeDataObj = parseOBJ(arvore); 
-    const treeBuffers = createBuffers(gl, treeDataObj);
+    // 2. Árvore (Tronco + Folhas)
+    const troncoData = parseOBJ(arvoreTronco);
+    const troncoBuffers = createBuffers(gl, troncoData);
+    const folhasData = parseOBJ(arvoreFolhas);
+    const folhasBuffers = createBuffers(gl, folhasData);
     
-    // 3. Rocha (Verifique se no objeto.js se chama 'rockData' ou 'rocha')
-    // Vou usar 'rockData' que é o padrão que combinamos
+    // 3. Rocha
     const rockDataObj = parseOBJ(rocha); 
     const rockBuffers = createBuffers(gl, rockDataObj);
 
+    // 4. Moeda
     const coinDataObj = parseOBJ(moeda);
     const coinBuffers = createBuffers(gl, coinDataObj);
     
-    const heroDataObj = parseOBJ(heroi); 
-    const heroBuffers = createBuffers(gl, heroDataObj);
+    // 5. HEROI UNIFESP
+    const heroBaseData = parseOBJ(heroiBase);
+    const heroBaseBuffers = createBuffers(gl, heroBaseData);
 
-    
-    // Variável de controle: 'sapo' ou 'heroi'
+    const heroLetrasData = parseOBJ(heroiLetras);
+    const heroLetrasBuffers = createBuffers(gl, heroLetrasData);
+
+    // Variável de controle
     let currentCharacter = 'sapo';
-    // 4. Chão
 
-
+    // 6. Chão
     const floorData = {
         positions: [-100, 0, 100, 100, 0, 100, -100, 0, -100, 100, 0, -100],
         normals: [0,1,0, 0,1,0, 0,1,0, 0,1,0],
@@ -222,14 +223,11 @@ function gerarMapa() {
     };
     const floorBuffers = createBuffers(gl, floorData);
 
-    // --- LÓGICA DO BOTÃO DE TROCA ---
+    // --- LÓGICA DO BOTÃO ---
     const charBtn = document.getElementById("charBtn");
-    
     charBtn.addEventListener("click", () => {
-        // Se clicar, inverte o personagem
         if (currentCharacter === 'sapo') {
             currentCharacter = 'heroi';
-            // Tira o foco do botão para não atrapalhar o WASD
             charBtn.blur(); 
             console.log("Trocou para Herói!");
         } else {
@@ -238,8 +236,7 @@ function gerarMapa() {
             console.log("Trocou para Sapo!");
         }
     });
-    // --- GERA O MAPA ---
-    // (Removemos o loop for antigo daqui)
+
     gerarMapa(); 
 
     const loc = {
@@ -254,7 +251,6 @@ function gerarMapa() {
     window.addEventListener("keydown", (e) => {
         if (isMoving) return;
 
-        // 1. Calcular a PRÓXIMA posição
         let proximoX = targetX;
         let proximoZ = targetZ;
         let novoAngulo = targetAngle;
@@ -274,39 +270,23 @@ function gerarMapa() {
         }
 
         if (tentouMover) {
-            // VERIFICAR COLISÃO
             const bateu = obstaculos.find(obs => obs.x === proximoX && obs.z === proximoZ);
+            if (bateu) { console.log("Bateu!"); return; }
 
-            if (bateu) {
-                console.log("Bateu! Bloqueado.");
-                return; 
-            }
-
-            // Caminho livre
-            targetX = proximoX;
-            targetZ = proximoZ;
-            targetAngle = novoAngulo;
+            targetX = proximoX; targetZ = proximoZ; targetAngle = novoAngulo;
+            
+            // Lógica da Moeda
             const moedaIndex = moedas.findIndex(c => c.x === targetX && c.z === targetZ && c.active);
-
             if (moedaIndex !== -1) {
-                // ACHOU UMA MOEDA!
-                console.log("Moeda coletada!");
-                
-                // 1. Desativa a moeda (para ela parar de ser desenhada)
                 moedas[moedaIndex].active = false;
-                
-                // 2. Aumenta Pontuação
                 score += 10;
-                
-                // 3. Atualiza o HTML (Placar)
                 document.getElementById("score").innerText = score;
-                
-                // 4. Verifica o desbloqueio do personagem (Lógica futura)
-                if (score >= 20) {
-                    // Mostra o botão
+                // Mude de volta para 300 quando terminar de testar!
+                if (score >= 20) { 
                     document.getElementById("charBtn").style.display = "block";
                 }
             }
+
             isMoving = true;
             moveStartTime = Date.now();
             startX = currentX; startZ = currentZ; startAngle = currentAngle;
@@ -344,112 +324,129 @@ function gerarMapa() {
         gl.uniformMatrix4fv(loc.proj, false, proj);
         gl.uniformMatrix4fv(loc.view, false, view);
         gl.uniform3fv(loc.light, [30, 50, 20]);
-
-        // --- DESENHO DO CHÃO (LISTRAS) ---
-        // (Aqui mantivemos o chão simples, mas podemos colocar as listras depois)
+// --- CHÃO (CORRIGIDO) ---
         useBuffers(gl, floorBuffers, prog);
-        gl.uniform3fv(loc.color, [0.3, 0.35, 0.4]);
-        let mFloor = Matrix.translate(Matrix.identity(), 0, -0.1, 0);
-        mFloor = Matrix.scale(mFloor, 100, 1, 100);
-        gl.uniformMatrix4fv(loc.model, false, mFloor);
-        gl.uniformMatrix4fv(loc.invTrans, false, mFloor);
-        gl.drawElements(gl.TRIANGLES, floorData.indices.length, gl.UNSIGNED_SHORT, 0);
-
-// --- DESENHO DO PERSONAGEM (SAPO ou HERÓI) ---
         
-        let buffersToUse;
-        let indicesCount;
-        let charColor;
-        let charScale;
+        // APAGUEI O TRECHO QUE DESENHAVA O CHÃO GIGANTE AQUI!
+        // Deixamos apenas o loop abaixo:
 
-        // Decide qual modelo usar baseado na variável
-        if (currentCharacter === 'sapo') {
-            buffersToUse = sapoBuffers;
-            indicesCount = sapoData.indices.length;
-            charColor = [0.2, 0.8, 0.2]; // Verde Sapo
-            charScale = 6.0;             // Escala do Sapo
-        } else {
-            buffersToUse = heroBuffers;
-            indicesCount = heroDataObj.indices.length;
-            charColor = [0.2, 0.2, 0.9]; // Azul Herói (ou a cor que preferir)
-            charScale = 2.0;             // Ajuste a escala do Herói se ele for grande/pequeno
+        // Desenho listrado (Faixas)
+        for(let z = Math.floor(targetZ) - 20; z <= Math.floor(targetZ) + 30; z++) {
+            
+            // Define cor (Cinza Claro / Escuro)
+            if (z % 2 === 0) gl.uniform3fv(loc.color, [0.6, 0.6, 0.6]); 
+            else gl.uniform3fv(loc.color, [0.5, 0.5, 0.5]);             
+            
+            // Desenha a faixa na posição Z
+            let mFaixa = Matrix.translate(Matrix.identity(), 0, -0.1, z * PASSO);
+            mFaixa = Matrix.scale(mFaixa, 1.0, 1.0, 0.009);            
+            gl.uniformMatrix4fv(loc.model, false, mFaixa);
+            // Nota: invTrans para planos planos não é critico, mas pode manter
+            gl.uniformMatrix4fv(loc.invTrans, false, mFaixa); 
+            
+            gl.drawElements(gl.TRIANGLES, floorData.indices.length, gl.UNSIGNED_SHORT, 0);
         }
-
-        // Configura e Desenha
-        useBuffers(gl, buffersToUse, prog);
-        gl.uniform3fv(loc.color, charColor); 
-        
+        // --- DESENHO DO PERSONAGEM ---
         let mChar = Matrix.translate(Matrix.identity(), rx, jumpY, rz);
         mChar = Matrix.rotateY(mChar, currentAngle);
-        mChar = Matrix.scale(mChar, charScale, charScale, charScale);
-        
-        gl.uniformMatrix4fv(loc.model, false, mChar);
-        gl.uniformMatrix4fv(loc.invTrans, false, mChar);
-        gl.drawElements(gl.TRIANGLES, indicesCount, gl.UNSIGNED_SHORT, 0);
-// --- DESENHO DAS ÁRVORES ---
-        useBuffers(gl, treeBuffers, prog);
-        gl.uniform3fv(loc.color, [0.13, 0.55, 0.13]); 
 
+        if (currentCharacter === 'sapo') {
+            // SAPO
+            useBuffers(gl, sapoBuffers, prog);
+            gl.uniform3fv(loc.color, [0.2, 0.8, 0.2]); // Verde Sapo
+            let mSapo = Matrix.scale(mChar, 6.0, 6.0, 6.0);
+            gl.uniformMatrix4fv(loc.model, false, mSapo);
+            gl.uniformMatrix4fv(loc.invTrans, false, mSapo);
+            gl.drawElements(gl.TRIANGLES, sapoData.indices.length, gl.UNSIGNED_SHORT, 0);
+
+        } else {
+            // HEROI UNIFESP
+            
+            // 1. BASE (Retângulo Verde)
+            let mHero = Matrix.scale(mChar, 2.0, 2.0, 2.0);
+            gl.uniformMatrix4fv(loc.model, false, mHero);
+            gl.uniformMatrix4fv(loc.invTrans, false, mHero);
+
+            useBuffers(gl, heroBaseBuffers, prog);
+            gl.uniform3fv(loc.color, [0.13, 0.55, 0.13]); // Verde Unifesp
+            gl.drawElements(gl.TRIANGLES, heroBaseData.indices.length, gl.UNSIGNED_SHORT, 0);
+
+            // 2. LETRAS (Branco e MAIORES/GROSSAS)
+            // MUDANÇA AQUI: Criamos uma escala especial para as letras
+            // 2.2 = Um pouco mais largo que a base
+            // 4.0 = Bem mais grosso (z) para saltar para fora
+            let mLetras = Matrix.scale(mHero, 1.1, 1.1, 2.0); 
+            
+            gl.uniformMatrix4fv(loc.model, false, mLetras);
+            gl.uniformMatrix4fv(loc.invTrans, false, mLetras);
+
+            useBuffers(gl, heroLetrasBuffers, prog);
+            gl.uniform3fv(loc.color, [1.0, 1.0, 1.0]); // Branco
+            gl.drawElements(gl.TRIANGLES, heroLetrasData.indices.length, gl.UNSIGNED_SHORT, 0);
+        }
+
+        // --- ÁRVORES ---
         for (const obs of obstaculos) {
             if (obs.type === 'tree') {
                 let mTree = Matrix.translate(Matrix.identity(), obs.x * PASSO, 0, obs.z * PASSO);
-                mTree = Matrix.scale(mTree, 2.0, 2.0, 2.0); 
-                
+                mTree = Matrix.scale(mTree, 2.0, 2.0, 2.0);
                 gl.uniformMatrix4fv(loc.model, false, mTree);
                 gl.uniformMatrix4fv(loc.invTrans, false, mTree);
-                gl.drawElements(gl.TRIANGLES, treeDataObj.indices.length, gl.UNSIGNED_SHORT, 0);
+                useBuffers(gl, troncoBuffers, prog);
+                gl.uniform3fv(loc.color, [0.55, 0.27, 0.07]); 
+                gl.drawElements(gl.TRIANGLES, troncoData.indices.length, gl.UNSIGNED_SHORT, 0);
+                useBuffers(gl, folhasBuffers, prog);
+                gl.uniform3fv(loc.color, [0.13, 0.55, 0.13]); 
+                gl.drawElements(gl.TRIANGLES, folhasData.indices.length, gl.UNSIGNED_SHORT, 0);
             }
         }
 
-        // --- DESENHO DAS ROCHAS (O QUE FALTAVA!) ---
-        useBuffers(gl, rockBuffers, prog); // 1. Troca para buffer da Rocha
-        gl.uniform3fv(loc.color, [0.5, 0.5, 0.55]); // 2. Cor Cinza
-
+        // --- ROCHAS ---
+        useBuffers(gl, rockBuffers, prog);
+        gl.uniform3fv(loc.color, [0.5, 0.5, 0.55]); 
         for (const obs of obstaculos) {
             if (obs.type === 'rock') {
                 let mRock = Matrix.translate(Matrix.identity(), obs.x * PASSO, 0, obs.z * PASSO);
                 mRock = Matrix.scale(mRock, 1.5, 1.0, 1.5); 
-
                 gl.uniformMatrix4fv(loc.model, false, mRock);
                 gl.uniformMatrix4fv(loc.invTrans, false, mRock);
                 gl.drawElements(gl.TRIANGLES, rockDataObj.indices.length, gl.UNSIGNED_SHORT, 0);
             }
         }
 
-        // --- DESENHO DAS MOEDAS ---
-        useBuffers(gl, coinBuffers, prog); // 1. Ativa buffer Moeda
-        gl.uniform3fv(loc.color, [1.0, 0.84, 0.0]); // 2. Cor Ouro
-        
+        // --- MOEDAS ---
+        useBuffers(gl, coinBuffers, prog);
+        gl.uniform3fv(loc.color, [1.0, 0.84, 0.0]); 
         let anguloMoeda = (Date.now() / 1000) * 3.0; 
         for (const c of moedas) {
             if (c.active) {
                 let mCoin = Matrix.translate(Matrix.identity(), c.x * PASSO, 0.5, c.z * PASSO);
                 mCoin = Matrix.rotateY(mCoin, anguloMoeda);
                 mCoin = Matrix.scale(mCoin, 0.5, 0.5, 0.5); 
-
                 gl.uniformMatrix4fv(loc.model, false, mCoin);
                 gl.uniformMatrix4fv(loc.invTrans, false, mCoin);
                 gl.drawElements(gl.TRIANGLES, coinDataObj.indices.length, gl.UNSIGNED_SHORT, 0);
             }
-        } 
+        }
 
         requestAnimationFrame(drawScene);
     }
     drawScene();
 }
-    function createShader(gl, type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; }
-    function createProgram(gl, vs, fs) { const p = gl.createProgram(); gl.attachShader(p, createShader(gl,gl.VERTEX_SHADER,vs)); gl.attachShader(p, createShader(gl,gl.FRAGMENT_SHADER,fs)); gl.linkProgram(p); return p; }
-    function createBuffers(gl, data) {
-        const p = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, p); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data.positions), gl.STATIC_DRAW);
-        const n = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, n); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data.normals), gl.STATIC_DRAW);
-        const i = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, i); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(data.indices), gl.STATIC_DRAW);
-        return { p, n, i };
-    }
-    function useBuffers(gl, buf, prog) {
-        const pos = gl.getAttribLocation(prog, "a_position"); const norm = gl.getAttribLocation(prog, "a_normal");
-        gl.bindBuffer(gl.ARRAY_BUFFER, buf.p); gl.vertexAttribPointer(pos, 3, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(pos);
-        gl.bindBuffer(gl.ARRAY_BUFFER, buf.n); gl.vertexAttribPointer(norm, 3, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(norm);
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buf.i);
-    }
 
-    window.onload = main;
+function createShader(gl, type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; }
+function createProgram(gl, vs, fs) { const p = gl.createProgram(); gl.attachShader(p, createShader(gl,gl.VERTEX_SHADER,vs)); gl.attachShader(p, createShader(gl,gl.FRAGMENT_SHADER,fs)); gl.linkProgram(p); return p; }
+function createBuffers(gl, data) {
+    const p = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, p); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data.positions), gl.STATIC_DRAW);
+    const n = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, n); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data.normals), gl.STATIC_DRAW);
+    const i = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, i); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(data.indices), gl.STATIC_DRAW);
+    return { p, n, i };
+}
+function useBuffers(gl, buf, prog) {
+    const pos = gl.getAttribLocation(prog, "a_position"); const norm = gl.getAttribLocation(prog, "a_normal");
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf.p); gl.vertexAttribPointer(pos, 3, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(pos);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf.n); gl.vertexAttribPointer(norm, 3, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(norm);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buf.i);
+}
+
+window.onload = main;
