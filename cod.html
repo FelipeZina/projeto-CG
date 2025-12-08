@@ -22,6 +22,7 @@
             position: relative;
             width: 800px;
             height: 600px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
         }
         
         #gameCanvas {
@@ -40,6 +41,7 @@
             font-size: 18px;
             text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
             pointer-events: none; 
+            display: none; 
         }
         
         #instructions {
@@ -50,34 +52,54 @@
             font-size: 14px;
             text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
             pointer-events: none;
+            display: none; 
         }
         
-        #gameOver {
+        .overlay-screen {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background-color: rgba(0, 0, 0, 0.8);
+            background-color: rgba(0, 0, 0, 0.85);
             color: white;
-            padding: 20px;
-            border-radius: 10px;
+            padding: 30px;
+            border-radius: 15px;
             text-align: center;
+            width: 300px;
+            border: 2px solid white;
+        }
+
+        #gameOver {
             display: none;
+        }
+
+        #startMenu {
+            display: block;
         }
         
         button {
             background-color: #4CAF50;
             border: none;
             color: white;
-            padding: 10px 20px;
+            padding: 12px 24px;
             text-align: center;
             text-decoration: none;
-            display: inline-block;
+            display: block;
+            width: 100%;
             font-size: 16px;
-            margin: 10px 2px;
+            margin: 10px 0;
             cursor: pointer;
             border-radius: 5px;
+            transition: 0.2s;
         }
+
+        button:hover {
+            transform: scale(1.05); 
+        }
+
+        #btnModeEasy { background-color: #4CAF50; } 
+        #btnModeNormal { background-color: #ff9800; } 
+        #btnModeHard { background-color: #f44336; } 
 
         #charBtn {
             background-color: #ff9800; 
@@ -86,9 +108,8 @@
             margin-top: 10px;
             border: 2px solid white;
             font-weight: bold;
-        }
-        #charBtn:hover {
-            background-color: #e68900;
+            width: auto; 
+            display: none; 
         }
     </style>
 </head>
@@ -101,18 +122,25 @@
         
         <div id="ui">
             <div>Pontuação: <span id="score">0</span></div>
-            
-            <button id="charBtn">Trocar Personagem 🐸/?</button>
+            <button id="charBtn">Trocar Personagem 🐸/🦸</button>
         </div>
         
         <div id="instructions">
             Use as teclas W, A, S, D ou setas para mover 
         </div>
         
-        <div id="gameOver">
-            <h2>Fim de Jogo!</h2>
+        <div id="startMenu" class="overlay-screen">
+            <h2>MENU PRINCIPAL</h2>
+            <p>Escolha a dificuldade:</p>
+            <button id="btnModeEasy">Modo Livre (sem tronco)</button>
+            <button id="btnModeNormal">Normal</button>
+            <button id="btnModeHard">Difícil</button>
+        </div>
+
+        <div id="gameOver" class="overlay-screen">
+            <h2 style="color: #ff4444;">Fim de Jogo!</h2>
             <p>Sua pontuação: <span id="finalScore">0</span></p>
-            <button id="restartButton">Jogar Novamente</button>
+            <button id="restartButton">Voltar ao Menu</button>
         </div>
     </div>
 

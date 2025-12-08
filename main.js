@@ -86,9 +86,9 @@ function parseOBJ(text) {
   }
   return { positions, normals, indices };
 }
+
 const Matrix = {
     copy: function(m) { return m.slice(); },
-
     identity: function() { return [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]; },
     perspective: function(fovRad, aspect, near, far) {
         const f = Math.tan(Math.PI * 0.5 - 0.5 * fovRad);
@@ -115,12 +115,18 @@ const Matrix = {
     scale: function(m, sx, sy, sz) {
         return multiply(m, [sx,0,0,0, 0,sy,0,0, 0,0,sz,0, 0,0,0,1]);
     },
+    rotateX: function(m, angle) {
+        const c = Math.cos(angle);
+        const s = Math.sin(angle);
+        return multiply(m, [1, 0, 0, 0, 0, c, s, 0, 0, -s, c, 0, 0, 0, 0, 1]);
+    },
     rotateY: function(m, angle) {
         const c = Math.cos(angle);
         const s = Math.sin(angle);
         return multiply(m, [c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1]);
     }
 };
+
 function normalize(v) { const l = Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]); return [v[0]/l, v[1]/l, v[2]/l]; }
 function subtractVectors(a, b) { return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
 function cross(a, b) { return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
@@ -145,30 +151,103 @@ const MOVE_DURATION = 150;
 const PASSO = 2.0;
 let obstaculos = [];
 let moedas = [];
+let carros = []; 
+let mapRows = {};
 let score = 0;
+
+let gameRunning = false; 
+let currentCharacter = 'sapo';
+
+let troncoZ = 15.0; 
+let troncoSpeed = 0.04; 
+let troncoActive = true; 
 
 function gerarMapa() {
     obstaculos = [];
     moedas = [];
+    carros = []; 
+    mapRows = {};
     
-    for (let z = -10; z <= 50; z++) {
-        if (z >= -2 && z <= 3) continue; 
-        if (z % 2 !== 0) continue; 
+    for (let z = -300; z <= 20; z++) {
+        let tipoLinha = 'grass';
 
-        for (let x = -10; x <= 10; x++) {
-            let densidade = 0.4; 
+        if (z >= -2 && z <= 3) {
+            tipoLinha = 'grass';
+        } else {
+            let rand = Math.random();
+            if (rand < 0.3 && z % 2 === 0) tipoLinha = 'river';
+            else if (rand > 0.6) tipoLinha = 'road';
+        }
 
-            if (Math.random() < densidade) {
-                let tipo = Math.random() < 0.7 ? 'tree' : 'rock';
-                obstaculos.push({ x: x, z: z, type: tipo });
-            } else {
-                if (Math.random() < 0.1) {
-                    moedas.push({ x: x, z: z, active: true });
+        mapRows[z] = tipoLinha;
+
+        if (z % 2 !== 0 && tipoLinha !== 'road') continue; 
+
+        if (tipoLinha === 'grass') {
+             for (let x = -10; x <= 10; x++) {
+                if (Math.random() < 0.4) {
+                    let tipo = Math.random() < 0.7 ? 'tree' : 'rock';
+                    obstaculos.push({ x: x, z: z, type: tipo });
+                } else {
+                    if (Math.random() < 0.1) moedas.push({ x: x, z: z, active: true });
                 }
+            }
+        } 
+        else if (tipoLinha === 'river') {
+             for (let x = -10; x <= 10; x++) {
+                if (Math.random() < 0.4) {
+                    obstaculos.push({ x: x, z: z, type: 'lilypad' });
+                }
+            }
+        }
+        else if (tipoLinha === 'road') {
+            let direction = (z % 2 === 0) ? 1 : -1;
+            let speed = (0.05 + Math.random() * 0.05) * direction;
+
+            let numCarros = 1 + Math.floor(Math.random() * 2);
+            
+            for (let k = 0; k < numCarros; k++) {
+                let startX = -15 + Math.random() * 30;
+                carros.push({
+                    x: startX,
+                    z: z,
+                    speed: speed,
+                    color: [Math.random(), Math.random(), Math.random()]
+                });
             }
         }
     }
 }
+
+function iniciarJogo(modo) {
+    if (modo === 'easy') {
+        troncoActive = false; 
+    } else if (modo === 'normal') {
+        troncoActive = true;
+        troncoSpeed = 0.04;
+    } else if (modo === 'hard') {
+        troncoActive = true;
+        troncoSpeed = 0.08; 
+    }
+
+    sapoX = 0; sapoZ = 0;
+    targetX = 0; targetZ = 0;
+    currentX = 0; currentZ = 0;
+    score = 0;
+    troncoZ = 20.0;
+    document.getElementById("score").innerText = 0;
+    
+    document.getElementById("startMenu").style.display = "none";
+    document.getElementById("gameOver").style.display = "none";
+    document.getElementById("ui").style.display = "block";
+    document.getElementById("instructions").style.display = "block";
+    
+    gerarMapa();
+    gameRunning = true;
+    requestAnimationFrame(loopDoJogo); 
+}
+
+let loopDoJogo; 
 
 function main() {
     const canvas = document.getElementById('gameCanvas');
@@ -183,6 +262,7 @@ function main() {
     const prog = createProgram(gl, vertexShaderSource, fragmentShaderSource);
     gl.useProgram(prog);
 
+    // --- BUFFERS ---
     const sapoData = parseOBJ(frogData);
     const sapoBuffers = createBuffers(gl, sapoData);
     
@@ -199,11 +279,14 @@ function main() {
     
     const heroBaseData = parseOBJ(heroiBase);
     const heroBaseBuffers = createBuffers(gl, heroBaseData);
-
     const heroLetrasData = parseOBJ(heroiLetras);
     const heroLetrasBuffers = createBuffers(gl, heroLetrasData);
 
-    let currentCharacter = 'sapo';
+    const lilyDataObj = parseOBJ(vitoriaRegiaData); 
+    const lilyBuffers = createBuffers(gl, lilyDataObj);
+
+    const carDataObj = parseOBJ(Carro);
+    const carBuffers = createBuffers(gl, carDataObj);
 
     const floorData = {
         positions: [-100, 0, 100, 100, 0, 100, -100, 0, -100, 100, 0, -100],
@@ -212,20 +295,21 @@ function main() {
     };
     const floorBuffers = createBuffers(gl, floorData);
 
-    const charBtn = document.getElementById("charBtn");
-    charBtn.addEventListener("click", () => {
-        if (currentCharacter === 'sapo') {
-            currentCharacter = 'heroi';
-            charBtn.blur(); 
-            console.log("Trocou para Herói!");
-        } else {
-            currentCharacter = 'sapo';
-            charBtn.blur();
-            console.log("Trocou para Sapo!");
-        }
+    document.getElementById("btnModeEasy").addEventListener("click", () => iniciarJogo('easy'));
+    document.getElementById("btnModeNormal").addEventListener("click", () => iniciarJogo('normal'));
+    document.getElementById("btnModeHard").addEventListener("click", () => iniciarJogo('hard'));
+    
+    document.getElementById("restartButton").addEventListener("click", () => {
+        document.getElementById("gameOver").style.display = "none";
+        document.getElementById("startMenu").style.display = "block";
     });
 
-    gerarMapa(); 
+    const charBtn = document.getElementById("charBtn");
+    charBtn.addEventListener("click", () => {
+        if (currentCharacter === 'sapo') currentCharacter = 'heroi';
+        else currentCharacter = 'sapo';
+        charBtn.blur();
+    });
 
     const loc = {
         model: gl.getUniformLocation(prog, "u_modelMatrix"),
@@ -237,7 +321,7 @@ function main() {
     };
 
     window.addEventListener("keydown", (e) => {
-        if (isMoving) return;
+        if (isMoving || !gameRunning) return; 
 
         let proximoX = targetX;
         let proximoZ = targetZ;
@@ -258,11 +342,21 @@ function main() {
         }
 
         if (tentouMover) {
-            const bateu = obstaculos.find(obs => obs.x === proximoX && obs.z === proximoZ);
-            if (bateu) { console.log("Bateu!"); return; }
+            const bateu = obstaculos.find(obs => obs.x === proximoX && obs.z === proximoZ && obs.type !== 'lilypad');
+            if (bateu) { return; }
 
             targetX = proximoX; targetZ = proximoZ; targetAngle = novoAngulo;
             
+            let tipoTerreno = mapRows[targetZ];
+            if (tipoTerreno === 'river') {
+                const emCimaDaFolha = obstaculos.find(obs => 
+                    obs.x === targetX && obs.z === targetZ && obs.type === 'lilypad'
+                );
+                if (!emCimaDaFolha) {
+                    setTimeout(morrer, 300);
+                }
+            }
+
             const moedaIndex = moedas.findIndex(c => c.x === targetX && c.z === targetZ && c.active);
             if (moedaIndex !== -1) {
                 moedas[moedaIndex].active = false;
@@ -284,10 +378,21 @@ function main() {
         }
     });
 
-    let startX = 0, startZ = 0;
+    loopDoJogo = function() {
+        if (!gameRunning) return;
 
-    function drawScene() {
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        if (troncoActive) {
+            troncoZ -= troncoSpeed; 
+            
+            let sapoRealZ = currentZ * PASSO;
+            if (troncoZ <= sapoRealZ + 2.0) {
+                 console.log("ESMAGADO!");
+                 morrer();
+                 return; 
+            }
+        }
 
         let jumpY = 0;
         if (isMoving) {
@@ -304,26 +409,39 @@ function main() {
         const rx = currentX * PASSO;
         const rz = currentZ * PASSO;
 
-        const proj = Matrix.perspective(50 * Math.PI/180, canvas.width/canvas.height, 0.1, 200);
-        const view = Matrix.lookAt([rx + 15, 20, rz + 20], [rx, 0, rz], [0,1,0]);
+        const proj = Matrix.perspective(50 * Math.PI/180, canvas.width/canvas.height, 0.1, 500);
+        const view = Matrix.lookAt([rx, 20, rz + 20], [rx, 2, rz], [0,1,0]);
         
         gl.uniformMatrix4fv(loc.proj, false, proj);
         gl.uniformMatrix4fv(loc.view, false, view);
         gl.uniform3fv(loc.light, [30, 50, 20]);
 
         useBuffers(gl, floorBuffers, prog);
-
-        for(let z = Math.floor(targetZ) - 20; z <= Math.floor(targetZ) + 30; z++) {
-            
-            if (z % 2 === 0) gl.uniform3fv(loc.color, [0.6, 0.6, 0.6]); 
-            else gl.uniform3fv(loc.color, [0.5, 0.5, 0.5]);             
-            
+        for(let z = Math.floor(targetZ) - 60; z <= Math.floor(targetZ) + 10; z++) {
+            let tipo = mapRows[z] || 'grass'; 
+            if (tipo === 'river') gl.uniform3fv(loc.color, [0.2, 0.4, 0.8]); 
+            else if (tipo === 'road') gl.uniform3fv(loc.color, [0.2, 0.2, 0.2]); 
+            else {
+                if (z % 2 === 0) gl.uniform3fv(loc.color, [0.10, 0.60, 0.10]);   
+                else gl.uniform3fv(loc.color, [0.00, 0.45, 0.00]);              
+            }
             let mFaixa = Matrix.translate(Matrix.identity(), 0, -0.1, z * PASSO);
-            mFaixa = Matrix.scale(mFaixa, 1.0, 1.0, 0.01);            
+            mFaixa = Matrix.scale(mFaixa, 1.0, 1.0, 0.01);
             gl.uniformMatrix4fv(loc.model, false, mFaixa);
-            gl.uniformMatrix4fv(loc.invTrans, false, mFaixa); 
-            
             gl.drawElements(gl.TRIANGLES, floorData.indices.length, gl.UNSIGNED_SHORT, 0);
+        }
+
+        if (troncoActive) {
+            useBuffers(gl, coinBuffers, prog); 
+            gl.uniform3fv(loc.color, [0.4, 0.2, 0.1]); 
+            let mTronco = Matrix.translate(Matrix.identity(), 0, 1.0, troncoZ);
+            let anguloRolagem = -(Date.now() / 1000) * 2.0;
+            mTronco = Matrix.rotateX(mTronco, anguloRolagem); 
+            mTronco = Matrix.rotateY(mTronco, Math.PI / 2);
+            mTronco = Matrix.scale(mTronco, 2.0, 2.0, 300.0); 
+            gl.uniformMatrix4fv(loc.model, false, mTronco);
+            gl.uniformMatrix4fv(loc.invTrans, false, mTronco);
+            gl.drawElements(gl.TRIANGLES, coinDataObj.indices.length, gl.UNSIGNED_SHORT, 0);
         }
 
         let mChar = Matrix.translate(Matrix.identity(), rx, jumpY, rz);
@@ -332,40 +450,33 @@ function main() {
         if (currentCharacter === 'sapo') {
             useBuffers(gl, sapoBuffers, prog);
             gl.uniform3fv(loc.color, [0.2, 0.8, 0.2]); 
-            let mSapo = Matrix.scale(mChar, 6.0, 6.0, 6.0);
+            let mSapo = Matrix.scale(mChar,5.0, 5.0, 5.0);
             gl.uniformMatrix4fv(loc.model, false, mSapo);
             gl.uniformMatrix4fv(loc.invTrans, false, mSapo);
             gl.drawElements(gl.TRIANGLES, sapoData.indices.length, gl.UNSIGNED_SHORT, 0);
-
-} else {
-            
+        } else {
             let mBase = Matrix.copy(mChar); 
-            
             mBase = Matrix.translate(mBase, 1.0, 0.5, 0.5);
-            
             mBase = Matrix.scale(mBase, 0.7, 1.0, 1.0);
-            
             gl.uniformMatrix4fv(loc.model, false, mBase);
             gl.uniformMatrix4fv(loc.invTrans, false, mBase);
-
             useBuffers(gl, heroBaseBuffers, prog);
-            gl.uniform3fv(loc.color, [0.13, 0.55, 0.13]);
+            gl.uniform3fv(loc.color, [0.13, 0.75, 0.13]);
             gl.drawElements(gl.TRIANGLES, heroBaseData.indices.length, gl.UNSIGNED_SHORT, 0);
 
             let mLetras = Matrix.copy(mChar);
-            
-            mLetras = Matrix.translate(mLetras, -0.4, 1.0, 0.3);
-            
+            mLetras = Matrix.translate(mLetras, -0.7, 1.0, 0.3);
             mLetras = Matrix.scale(mLetras, 0.02, 0.02, 0.02); 
-            
             gl.uniformMatrix4fv(loc.model, false, mLetras);
             gl.uniformMatrix4fv(loc.invTrans, false, mLetras);
-
             useBuffers(gl, heroLetrasBuffers, prog);
             gl.uniform3fv(loc.color, [1.0, 1.0, 1.0]);
             gl.drawElements(gl.TRIANGLES, heroLetrasData.indices.length, gl.UNSIGNED_SHORT, 0);
         }
-           for (const obs of obstaculos) {
+
+        for (const obs of obstaculos) {
+            if (Math.abs(obs.z - targetZ) > 40) continue;
+
             if (obs.type === 'tree') {
                 let mTree = Matrix.translate(Matrix.identity(), obs.x * PASSO, 0, obs.z * PASSO);
                 mTree = Matrix.scale(mTree, 2.0, 2.0, 2.0);
@@ -383,6 +494,7 @@ function main() {
         useBuffers(gl, rockBuffers, prog);
         gl.uniform3fv(loc.color, [0.5, 0.5, 0.55]); 
         for (const obs of obstaculos) {
+            if (Math.abs(obs.z - targetZ) > 40) continue;
             if (obs.type === 'rock') {
                 let mRock = Matrix.translate(Matrix.identity(), obs.x * PASSO, 0, obs.z * PASSO);
                 mRock = Matrix.scale(mRock, 1.5, 1.0, 1.5); 
@@ -392,23 +504,58 @@ function main() {
             }
         }
 
+        useBuffers(gl, lilyBuffers, prog);
+        gl.uniform3fv(loc.color, [0.0, 0.5, 0.0]); 
+        for (const obs of obstaculos) {
+            if (Math.abs(obs.z - targetZ) > 40) continue;
+            if (obs.type === 'lilypad') {
+                let mLily = Matrix.translate(Matrix.identity(), obs.x * PASSO, 0, obs.z * PASSO);
+                mLily = Matrix.scale(mLily, 1.2, 0.5, 1.2); 
+                gl.uniformMatrix4fv(loc.model, false, mLily);
+                gl.uniformMatrix4fv(loc.invTrans, false, mLily);
+                gl.drawElements(gl.TRIANGLES, lilyDataObj.indices.length, gl.UNSIGNED_SHORT, 0);
+            }
+        }
+
         useBuffers(gl, coinBuffers, prog);
         gl.uniform3fv(loc.color, [1.0, 0.84, 0.0]); 
         let anguloMoeda = (Date.now() / 1000) * 3.0; 
         for (const c of moedas) {
+            if (Math.abs(c.z - targetZ) > 40) continue;
             if (c.active) {
                 let mCoin = Matrix.translate(Matrix.identity(), c.x * PASSO, 0.5, c.z * PASSO);
                 mCoin = Matrix.rotateY(mCoin, anguloMoeda);
-                mCoin = Matrix.scale(mCoin, 0.5, 0.5, 0.5); 
+                mCoin = Matrix.scale(mCoin, 0.4, 0.4, 0.4); 
                 gl.uniformMatrix4fv(loc.model, false, mCoin);
                 gl.uniformMatrix4fv(loc.invTrans, false, mCoin);
                 gl.drawElements(gl.TRIANGLES, coinDataObj.indices.length, gl.UNSIGNED_SHORT, 0);
             }
         }
 
-        requestAnimationFrame(drawScene);
+        useBuffers(gl, carBuffers, prog);
+        for (const carro of carros) {
+            if (Math.abs(carro.z - targetZ) > 40) continue;
+            carro.x += carro.speed;
+            if (carro.x > 20) carro.x = -20;
+            if (carro.x < -20) carro.x = 20;
+
+            gl.uniform3fv(loc.color, carro.color); 
+            let mCar = Matrix.translate(Matrix.identity(), carro.x * PASSO, 0.0, carro.z * PASSO);
+            mCar = Matrix.scale(mCar, 1.5, 1.5, 1.5);   
+            gl.uniformMatrix4fv(loc.model, false, mCar);
+            gl.uniformMatrix4fv(loc.invTrans, false, mCar);
+            gl.drawElements(gl.TRIANGLES, carDataObj.indices.length, gl.UNSIGNED_SHORT, 0);
+
+            if (Math.abs(carro.z - targetZ) < 0.3) { 
+                if (Math.abs(carro.x - currentX) < 1.2) { 
+                    morrer();   
+                    return;
+                }
+            }
+        }
+
+        requestAnimationFrame(loopDoJogo);
     }
-    drawScene();
 }
 
 function createShader(gl, type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; }
@@ -426,4 +573,11 @@ function useBuffers(gl, buf, prog) {
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buf.i);
 }
 
+function morrer() {
+    gameRunning = false;
+    document.getElementById("finalScore").innerText = score;
+    document.getElementById("ui").style.display = "none";
+    document.getElementById("instructions").style.display = "none";
+    document.getElementById("gameOver").style.display = "block";
+}
 window.onload = main;
