@@ -86,9 +86,9 @@ function parseOBJ(text) {
   }
   return { positions, normals, indices };
 }
+
 const Matrix = {
     copy: function(m) { return m.slice(); },
-
     identity: function() { return [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]; },
     perspective: function(fovRad, aspect, near, far) {
         const f = Math.tan(Math.PI * 0.5 - 0.5 * fovRad);
@@ -145,26 +145,64 @@ const MOVE_DURATION = 150;
 const PASSO = 2.0;
 let obstaculos = [];
 let moedas = [];
+let carros = []; 
+let mapRows = {};
 let score = 0;
 
 function gerarMapa() {
     obstaculos = [];
     moedas = [];
+    carros = []; 
+    mapRows = {};
     
-    for (let z = -10; z <= 50; z++) {
-        if (z >= -2 && z <= 3) continue; 
-        if (z % 2 !== 0) continue; 
+for (let z = -1000; z <= 20; z++) {
+          let tipoLinha = 'grass';
 
-        for (let x = -10; x <= 10; x++) {
-            let densidade = 0.4; 
+        if (z >= -2 && z <= 3) {
+            tipoLinha = 'grass';
+        } 
+        else {
+            let rand = Math.random();
+            if (rand < 0.3 && z % 2 === 0) tipoLinha = 'river';
+            else if (rand > 0.6) tipoLinha = 'road'; 
+        }
 
-            if (Math.random() < densidade) {
-                let tipo = Math.random() < 0.7 ? 'tree' : 'rock';
-                obstaculos.push({ x: x, z: z, type: tipo });
-            } else {
-                if (Math.random() < 0.1) {
-                    moedas.push({ x: x, z: z, active: true });
+        mapRows[z] = tipoLinha;
+
+        if (z % 2 !== 0 && tipoLinha !== 'road') continue; 
+
+        if (tipoLinha === 'grass') {
+             for (let x = -10; x <= 10; x++) {
+                if (Math.random() < 0.4) {
+                    let tipo = Math.random() < 0.6 ? 'tree' : 'rock';
+                    obstaculos.push({ x: x, z: z, type: tipo });
+                } else {
+                    if (Math.random() < 0.1) moedas.push({ x: x, z: z, active: true });
                 }
+            }
+        } 
+        else if (tipoLinha === 'river') {
+             for (let x = -10; x <= 10; x++) {
+                if (Math.random() < 0.4) {
+                    obstaculos.push({ x: x, z: z, type: 'lilypad' });
+                }
+            }
+        }
+        else if (tipoLinha === 'road') {
+            let direction = (z % 2 === 0) ? 1 : -1;
+            let speed = (0.05 + Math.random() * 0.05) * direction; 
+
+            let numCarros =  + Math.floor(Math.random() * 2);
+            
+            for (let k = 0; k < numCarros; k++) {
+                let startX = -15 + Math.random() * 30;
+                
+                carros.push({
+                    x: startX,      
+                    z: z,        
+                    speed: speed,  
+                    color: [Math.random(), Math.random(), Math.random()] 
+                });
             }
         }
     }
@@ -183,6 +221,7 @@ function main() {
     const prog = createProgram(gl, vertexShaderSource, fragmentShaderSource);
     gl.useProgram(prog);
 
+    
     const sapoData = parseOBJ(frogData);
     const sapoBuffers = createBuffers(gl, sapoData);
     
@@ -199,9 +238,15 @@ function main() {
     
     const heroBaseData = parseOBJ(heroiBase);
     const heroBaseBuffers = createBuffers(gl, heroBaseData);
-
     const heroLetrasData = parseOBJ(heroiLetras);
     const heroLetrasBuffers = createBuffers(gl, heroLetrasData);
+
+  
+    const lilyDataObj = parseOBJ(vitoriaRegiaData);
+    const lilyBuffers = createBuffers(gl, lilyDataObj);
+
+    const carDataObj = parseOBJ(cuboCarro);
+    const carBuffers = createBuffers(gl, carDataObj);
 
     let currentCharacter = 'sapo';
 
@@ -217,11 +262,9 @@ function main() {
         if (currentCharacter === 'sapo') {
             currentCharacter = 'heroi';
             charBtn.blur(); 
-            console.log("Trocou para Herói!");
         } else {
             currentCharacter = 'sapo';
             charBtn.blur();
-            console.log("Trocou para Sapo!");
         }
     });
 
@@ -258,11 +301,21 @@ function main() {
         }
 
         if (tentouMover) {
-            const bateu = obstaculos.find(obs => obs.x === proximoX && obs.z === proximoZ);
-            if (bateu) { console.log("Bateu!"); return; }
+            const bateu = obstaculos.find(obs => obs.x === proximoX && obs.z === proximoZ && obs.type !== 'lilypad');
+            if (bateu) { return; } 
 
             targetX = proximoX; targetZ = proximoZ; targetAngle = novoAngulo;
             
+            let tipoTerreno = mapRows[targetZ];
+            if (tipoTerreno === 'river') {
+                const emCimaDaFolha = obstaculos.find(obs => 
+                    obs.x === targetX && obs.z === targetZ && obs.type === 'lilypad'
+                );
+                if (!emCimaDaFolha) {
+                    setTimeout(morrer, 300); 
+                }
+            }
+
             const moedaIndex = moedas.findIndex(c => c.x === targetX && c.z === targetZ && c.active);
             if (moedaIndex !== -1) {
                 moedas[moedaIndex].active = false;
@@ -305,75 +358,72 @@ function main() {
         const rz = currentZ * PASSO;
 
         const proj = Matrix.perspective(50 * Math.PI/180, canvas.width/canvas.height, 0.1, 200);
-        const view = Matrix.lookAt([rx + 15, 20, rz + 20], [rx, 0, rz], [0,1,0]);
-        
+        const view = Matrix.lookAt([rx, 20, rz + 20], [rx, 2, rz], [0,1,0]);
         gl.uniformMatrix4fv(loc.proj, false, proj);
         gl.uniformMatrix4fv(loc.view, false, view);
         gl.uniform3fv(loc.light, [30, 50, 20]);
 
         useBuffers(gl, floorBuffers, prog);
+        
+            for(let z = Math.floor(targetZ) - 60; z <= Math.floor(targetZ) + 10; z++) {
+            let tipo = mapRows[z] || 'grass'; 
 
-        for(let z = Math.floor(targetZ) - 20; z <= Math.floor(targetZ) + 30; z++) {
-            
-            if (z % 2 === 0) gl.uniform3fv(loc.color, [0.6, 0.6, 0.6]); 
-            else gl.uniform3fv(loc.color, [0.5, 0.5, 0.5]);             
+            if (tipo === 'river') {
+                gl.uniform3fv(loc.color, [0.2, 0.4, 0.8]);
+            } else if (tipo === 'road') {
+                gl.uniform3fv(loc.color, [0.2, 0.2, 0.2]); 
+            } else {
+                if (z % 2 === 0) gl.uniform3fv(loc.color, [0.10, 0.50, 0.10]);   
+                else gl.uniform3fv(loc.color, [0.00, 0.45, 0.00]);             
+
+            }
             
             let mFaixa = Matrix.translate(Matrix.identity(), 0, -0.1, z * PASSO);
-            mFaixa = Matrix.scale(mFaixa, 1.0, 1.0, 0.01);            
+            mFaixa = Matrix.scale(mFaixa, 1.0, 1.0, 0.01);
             gl.uniformMatrix4fv(loc.model, false, mFaixa);
-            gl.uniformMatrix4fv(loc.invTrans, false, mFaixa); 
-            
             gl.drawElements(gl.TRIANGLES, floorData.indices.length, gl.UNSIGNED_SHORT, 0);
         }
-
         let mChar = Matrix.translate(Matrix.identity(), rx, jumpY, rz);
         mChar = Matrix.rotateY(mChar, currentAngle);
 
         if (currentCharacter === 'sapo') {
             useBuffers(gl, sapoBuffers, prog);
             gl.uniform3fv(loc.color, [0.2, 0.8, 0.2]); 
-            let mSapo = Matrix.scale(mChar, 6.0, 6.0, 6.0);
+            let mSapo = Matrix.scale(mChar, 5.0, 5.0, 5.0);
             gl.uniformMatrix4fv(loc.model, false, mSapo);
             gl.uniformMatrix4fv(loc.invTrans, false, mSapo);
             gl.drawElements(gl.TRIANGLES, sapoData.indices.length, gl.UNSIGNED_SHORT, 0);
-
-} else {
-            
+        } else {
             let mBase = Matrix.copy(mChar); 
-            
             mBase = Matrix.translate(mBase, 1.0, 0.5, 0.5);
-            
             mBase = Matrix.scale(mBase, 0.7, 1.0, 1.0);
-            
             gl.uniformMatrix4fv(loc.model, false, mBase);
             gl.uniformMatrix4fv(loc.invTrans, false, mBase);
-
             useBuffers(gl, heroBaseBuffers, prog);
-            gl.uniform3fv(loc.color, [0.13, 0.55, 0.13]);
+            gl.uniform3fv(loc.color, [0.13, 0.75, 0.13]);
             gl.drawElements(gl.TRIANGLES, heroBaseData.indices.length, gl.UNSIGNED_SHORT, 0);
 
             let mLetras = Matrix.copy(mChar);
-            
-            mLetras = Matrix.translate(mLetras, -0.4, 1.0, 0.3);
-            
+            mLetras = Matrix.translate(mLetras, -0.7, 1.0, 0.3);
             mLetras = Matrix.scale(mLetras, 0.02, 0.02, 0.02); 
-            
             gl.uniformMatrix4fv(loc.model, false, mLetras);
             gl.uniformMatrix4fv(loc.invTrans, false, mLetras);
-
             useBuffers(gl, heroLetrasBuffers, prog);
             gl.uniform3fv(loc.color, [1.0, 1.0, 1.0]);
             gl.drawElements(gl.TRIANGLES, heroLetrasData.indices.length, gl.UNSIGNED_SHORT, 0);
         }
-           for (const obs of obstaculos) {
+
+        for (const obs of obstaculos) {
             if (obs.type === 'tree') {
                 let mTree = Matrix.translate(Matrix.identity(), obs.x * PASSO, 0, obs.z * PASSO);
                 mTree = Matrix.scale(mTree, 2.0, 2.0, 2.0);
                 gl.uniformMatrix4fv(loc.model, false, mTree);
                 gl.uniformMatrix4fv(loc.invTrans, false, mTree);
+                
                 useBuffers(gl, troncoBuffers, prog);
                 gl.uniform3fv(loc.color, [0.55, 0.27, 0.07]); 
                 gl.drawElements(gl.TRIANGLES, troncoData.indices.length, gl.UNSIGNED_SHORT, 0);
+                
                 useBuffers(gl, folhasBuffers, prog);
                 gl.uniform3fv(loc.color, [0.13, 0.55, 0.13]); 
                 gl.drawElements(gl.TRIANGLES, folhasData.indices.length, gl.UNSIGNED_SHORT, 0);
@@ -392,6 +442,19 @@ function main() {
             }
         }
 
+        useBuffers(gl, lilyBuffers, prog);
+        gl.uniform3fv(loc.color, [0.0, 0.5, 0.0]); 
+        for (const obs of obstaculos) {
+            if (obs.type === 'lilypad') {
+                let mLily = Matrix.translate(Matrix.identity(), obs.x * PASSO, 0, obs.z * PASSO);
+                mLily = Matrix.scale(mLily, 1.2, 0.5, 1.2); 
+                
+                gl.uniformMatrix4fv(loc.model, false, mLily);
+                gl.uniformMatrix4fv(loc.invTrans, false, mLily);
+                gl.drawElements(gl.TRIANGLES, lilyDataObj.indices.length, gl.UNSIGNED_SHORT, 0);
+            }
+        }
+
         useBuffers(gl, coinBuffers, prog);
         gl.uniform3fv(loc.color, [1.0, 0.84, 0.0]); 
         let anguloMoeda = (Date.now() / 1000) * 3.0; 
@@ -405,7 +468,32 @@ function main() {
                 gl.drawElements(gl.TRIANGLES, coinDataObj.indices.length, gl.UNSIGNED_SHORT, 0);
             }
         }
+        useBuffers(gl, carBuffers, prog);
+        
+          for (const carro of carros) {
+            carro.x += carro.speed;
 
+            if (carro.x > 20) carro.x = -20;
+            if (carro.x < -20) carro.x = 20;
+
+            gl.uniform3fv(loc.color, carro.color); 
+
+            let mCar = Matrix.translate(Matrix.identity(), carro.x * PASSO, 0.0, carro.z * PASSO);
+
+            
+            mCar = Matrix.scale(mCar, 1.5, 1.5, 1.5); 
+
+            gl.uniformMatrix4fv(loc.model, false, mCar);
+            gl.uniformMatrix4fv(loc.invTrans, false, mCar);
+            gl.drawElements(gl.TRIANGLES, carDataObj.indices.length, gl.UNSIGNED_SHORT, 0);
+
+            if (Math.abs(carro.z - targetZ) < 0.3) { 
+                if (Math.abs(carro.x - currentX) < 1.2) { 
+                    console.log("ATROPELADO!");
+                    morrer();
+                }
+            }
+        }
         requestAnimationFrame(drawScene);
     }
     drawScene();
@@ -426,4 +514,13 @@ function useBuffers(gl, buf, prog) {
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buf.i);
 }
 
+function morrer() {
+    alert("ELIMINADO! Clique 'OK' para reinciar. Pontuação Final: " + score);
+    sapoX = 0; sapoZ = 0;
+    targetX = 0; targetZ = 0;
+    currentX = 0; currentZ = 0;
+    score = 0;
+    document.getElementById("score").innerText = 0;
+    gerarMapa(); 
+}
 window.onload = main;
