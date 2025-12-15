@@ -1,57 +1,71 @@
 const vertexShaderSource = `
     attribute vec3 a_position;
     attribute vec3 a_normal;
+    attribute vec2 a_texcoord; 
     
     varying vec3 v_normal;
-    varying vec3 v_surfaceToLight;
-    varying vec3 v_surfaceToView;
+    varying vec2 v_texcoord; 
     
     uniform mat4 u_modelMatrix;
     uniform mat4 u_viewMatrix;
     uniform mat4 u_projectionMatrix;
     uniform mat4 u_worldInverseTranspose;
-    uniform vec3 u_lightPosition;
-    uniform vec3 u_viewPosition;
 
     void main() {
         vec4 worldPosition = u_modelMatrix * vec4(a_position, 1.0);
         gl_Position = u_projectionMatrix * u_viewMatrix * worldPosition;
         
         v_normal = mat3(u_worldInverseTranspose) * a_normal;
-        v_surfaceToLight = u_lightPosition - worldPosition.xyz;
-        v_surfaceToView = u_viewPosition - worldPosition.xyz;
+        v_texcoord = a_texcoord; 
     }
 `;
 
 const fragmentShaderSource = `
     precision mediump float;
-    uniform vec3 u_color;
+    
+    uniform vec3 u_color;          
+    uniform sampler2D u_texture;   
+    uniform bool u_isTextured;     // True = usa textura, False = usa cor sólida
+    
+    uniform vec3 u_lightDirection1; 
+    uniform vec3 u_lightDirection2; 
+
     varying vec3 v_normal;
-    varying vec3 v_surfaceToLight;
-    varying vec3 v_surfaceToView;
+    varying vec2 v_texcoord;       
     
     void main() {
         vec3 normal = normalize(v_normal);
-        vec3 surfaceToLight = normalize(v_surfaceToLight);
-        vec3 surfaceToView = normalize(v_surfaceToView);
-        vec3 halfVector = normalize(surfaceToLight + surfaceToView);
+        
+        // --- ILUMINAÇÃO ---
+        float light1 = max(dot(normal, normalize(u_lightDirection1)), 0.0);
+        float light2 = max(dot(normal, normalize(u_lightDirection2)), 0.0);
+        float totalLight = 0.3 + (light1 * 0.6) + (light2 * 0.2);
 
-        float light = max(dot(normal, surfaceToLight), 0.0);
-        float specular = 0.0;
-        if (light > 0.0) {
-            specular = pow(max(dot(normal, halfVector), 0.0), 50.0);
+        // --- COR BASE ---
+        vec4 baseColor;
+        
+        if (u_isTextured) {
+            // Se for chão, pega a cor da imagem (textura)
+            baseColor = texture2D(u_texture, v_texcoord);
+        } else {
+            // Se for sapo/carro, usa a cor sólida
+            baseColor = vec4(u_color, 1.0);
         }
 
-        gl_FragColor = vec4(u_color * (0.4 + 0.6 * light) + (specular * 0.2), 1.0);
+        // Aplica a luz na cor base
+        gl_FragColor = vec4(baseColor.rgb * totalLight, 1.0);
     }
 `;
 
 function parseOBJ(text) {
   const positions = [];
   const normals = [];
+  const texcoords = []; // Array para coordenadas UV
   const indices = [];
+  
   const tempVertices = [];
   const tempNormals = [];
+  const tempTexCoords = []; // Armazena os vts do arquivo
 
   const lines = text.split('\n');
   for (let line of lines) {
@@ -65,26 +79,40 @@ function parseOBJ(text) {
       tempVertices.push(args.map(parseFloat));
     } else if (keyword === 'vn') {
       tempNormals.push(args.map(parseFloat));
+    } else if (keyword === 'vt') {
+      // Lê coordenadas de textura (u, v)
+      tempTexCoords.push(args.map(parseFloat)); 
     } else if (keyword === 'f') {
       const faceVerts = args.map(f => {
         const parts = f.split('/');
         const v = parseInt(parts[0]) - 1;
+        // O formato é v/vt/vn. O segundo elemento é a textura.
+        const t = parts.length > 1 && parts[1] ? parseInt(parts[1]) - 1 : undefined; 
         const n = parts.length > 2 && parts[2] ? parseInt(parts[2]) - 1 : undefined;
-        return { v, n };
+        return { v, t, n };
       });
+      
       for (let i = 1; i < faceVerts.length - 1; i++) {
         const tri = [faceVerts[0], faceVerts[i], faceVerts[i + 1]];
-        tri.forEach(({ v, n }) => {
-          const vert = tempVertices[v];
+        tri.forEach(({ v, t, n }) => {
+          // Posição
+          positions.push(...tempVertices[v]);
+          
+          // Textura
+          if (t !== undefined && tempTexCoords[t]) {
+             texcoords.push(tempTexCoords[t][0], tempTexCoords[t][1]);
+          } else {
+             texcoords.push(0, 0); // Placeholder se não tiver textura
+          }
+
           const norm = n !== undefined ? tempNormals[n] : [0, 1, 0];
-          positions.push(...vert);
           normals.push(...norm);
           indices.push(indices.length);
         });
       }
     }
   }
-  return { positions, normals, indices };
+  return { positions, normals, texcoords, indices };
 }
 
 const Matrix = {
@@ -154,7 +182,7 @@ let moedas = [];
 let carros = []; 
 let mapRows = {};
 let score = 0;
-
+let cameraMode = 'froggy';
 let gameRunning = false; 
 let currentCharacter = 'sapo';
 
@@ -262,7 +290,6 @@ function main() {
     const prog = createProgram(gl, vertexShaderSource, fragmentShaderSource);
     gl.useProgram(prog);
 
-    // --- BUFFERS ---
     const sapoData = parseOBJ(frogData);
     const sapoBuffers = createBuffers(gl, sapoData);
     
@@ -288,9 +315,21 @@ function main() {
     const carDataObj = parseOBJ(Carro);
     const carBuffers = createBuffers(gl, carDataObj);
 
-    const floorData = {
+    const texGrass = loadTexture(gl, 'grass.jpg');
+    const texRoad = loadTexture(gl, 'road.jpg');
+    const texWater = loadTexture(gl, 'water.jpg');
+
+const floorData = {
         positions: [-100, 0, 100, 100, 0, 100, -100, 0, -100, 100, 0, -100],
         normals: [0,1,0, 0,1,0, 0,1,0, 0,1,0],
+        
+        texcoords: [
+            0,  0, 
+            20, 0, 
+            0,  1, 
+            20, 1
+        ], 
+        
         indices: [0,1,2, 2,1,3]
     };
     const floorBuffers = createBuffers(gl, floorData);
@@ -304,6 +343,19 @@ function main() {
         document.getElementById("startMenu").style.display = "block";
     });
 
+    const btnCam = document.getElementById("btnCameraToggle");
+    if (btnCam) {
+        btnCam.addEventListener("click", () => {
+            if (cameraMode === 'froggy') {
+                cameraMode = 'isometric';
+                btnCam.innerText = "Câmera: Crossy Road 🐔";
+            } else {
+                cameraMode = 'froggy';
+                btnCam.innerText = "Câmera: Froggy 🐸";
+            }
+        });
+    }
+
     const charBtn = document.getElementById("charBtn");
     charBtn.addEventListener("click", () => {
         if (currentCharacter === 'sapo') currentCharacter = 'heroi';
@@ -311,13 +363,21 @@ function main() {
         charBtn.blur();
     });
 
+    // --- CORREÇÃO 2: PEGANDO LOCAIS DOS UNIFORMS FALTANTES ---
     const loc = {
         model: gl.getUniformLocation(prog, "u_modelMatrix"),
         view: gl.getUniformLocation(prog, "u_viewMatrix"),
         proj: gl.getUniformLocation(prog, "u_projectionMatrix"),
         color: gl.getUniformLocation(prog, "u_color"),
-        light: gl.getUniformLocation(prog, "u_lightPosition"),
-        invTrans: gl.getUniformLocation(prog, "u_worldInverseTranspose")
+        
+        lightDir1: gl.getUniformLocation(prog, "u_lightDirection1"),
+        lightDir2: gl.getUniformLocation(prog, "u_lightDirection2"),
+        
+        invTrans: gl.getUniformLocation(prog, "u_worldInverseTranspose"),
+
+        // NOVOS UNIFORMS PARA TEXTURA
+        isTextured: gl.getUniformLocation(prog, "u_isTextured"),
+        texture: gl.getUniformLocation(prog, "u_texture")
     };
 
     window.addEventListener("keydown", (e) => {
@@ -410,26 +470,44 @@ function main() {
         const rz = currentZ * PASSO;
 
         const proj = Matrix.perspective(50 * Math.PI/180, canvas.width/canvas.height, 0.1, 500);
-        const view = Matrix.lookAt([rx, 20, rz + 20], [rx, 2, rz], [0,1,0]);
         
+        let view;
+        if (cameraMode === 'froggy') {
+            view = Matrix.lookAt([rx, 20, rz + 20], [rx, 2, rz], [0,1,0]);
+        } else {
+            view = Matrix.lookAt([rx + 20, 20, rz + 20], [rx, 0, rz], [0,1,0]);
+        }
         gl.uniformMatrix4fv(loc.proj, false, proj);
         gl.uniformMatrix4fv(loc.view, false, view);
-        gl.uniform3fv(loc.light, [30, 50, 20]);
+        gl.uniform3fv(loc.lightDir1, [0.5, 1.0, 0.5]); 
+        gl.uniform3fv(loc.lightDir2, [-0.5, 0.5, 0.2]); 
 
         useBuffers(gl, floorBuffers, prog);
+        
+        // Ativa o uso de texturas no shader
+        gl.uniform1i(loc.isTextured, 1);
+        gl.activeTexture(gl.TEXTURE0); // Ativa unidade 0
+        gl.uniform1i(loc.texture, 0);  // Diz pro shader ler da unidade 0
+
         for(let z = Math.floor(targetZ) - 60; z <= Math.floor(targetZ) + 10; z++) {
             let tipo = mapRows[z] || 'grass'; 
-            if (tipo === 'river') gl.uniform3fv(loc.color, [0.2, 0.4, 0.8]); 
-            else if (tipo === 'road') gl.uniform3fv(loc.color, [0.2, 0.2, 0.2]); 
-            else {
-                if (z % 2 === 0) gl.uniform3fv(loc.color, [0.10, 0.60, 0.10]);   
-                else gl.uniform3fv(loc.color, [0.00, 0.45, 0.00]);              
+            
+            if (tipo === 'river') {
+                gl.bindTexture(gl.TEXTURE_2D, texWater);
+            } else if (tipo === 'road') {
+                gl.bindTexture(gl.TEXTURE_2D, texRoad);
+            } else {
+                gl.bindTexture(gl.TEXTURE_2D, texGrass);
             }
+            
             let mFaixa = Matrix.translate(Matrix.identity(), 0, -0.1, z * PASSO);
             mFaixa = Matrix.scale(mFaixa, 1.0, 1.0, 0.01);
             gl.uniformMatrix4fv(loc.model, false, mFaixa);
             gl.drawElements(gl.TRIANGLES, floorData.indices.length, gl.UNSIGNED_SHORT, 0);
         }
+
+        gl.uniform1i(loc.isTextured, 0); 
+
 
         if (troncoActive) {
             useBuffers(gl, coinBuffers, prog); 
@@ -561,23 +639,87 @@ function main() {
 function createShader(gl, type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; }
 function createProgram(gl, vs, fs) { const p = gl.createProgram(); gl.attachShader(p, createShader(gl,gl.VERTEX_SHADER,vs)); gl.attachShader(p, createShader(gl,gl.FRAGMENT_SHADER,fs)); gl.linkProgram(p); return p; }
 function createBuffers(gl, data) {
-    const p = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, p); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data.positions), gl.STATIC_DRAW);
-    const n = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, n); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data.normals), gl.STATIC_DRAW);
-    const i = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, i); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(data.indices), gl.STATIC_DRAW);
-    return { p, n, i };
+    const p = gl.createBuffer(); 
+    gl.bindBuffer(gl.ARRAY_BUFFER, p); 
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data.positions), gl.STATIC_DRAW);
+    
+    const n = gl.createBuffer(); 
+    gl.bindBuffer(gl.ARRAY_BUFFER, n); 
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data.normals), gl.STATIC_DRAW);
+    
+    let t = null;
+    if (data.texcoords) {
+        t = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, t);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data.texcoords), gl.STATIC_DRAW);
+    }
+
+    const i = gl.createBuffer(); 
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, i); 
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(data.indices), gl.STATIC_DRAW);
+    
+    return { p, n, t, i }; 
 }
 function useBuffers(gl, buf, prog) {
-    const pos = gl.getAttribLocation(prog, "a_position"); const norm = gl.getAttribLocation(prog, "a_normal");
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf.p); gl.vertexAttribPointer(pos, 3, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(pos);
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf.n); gl.vertexAttribPointer(norm, 3, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(norm);
+    const pos = gl.getAttribLocation(prog, "a_position"); 
+    const norm = gl.getAttribLocation(prog, "a_normal");
+    const tex = gl.getAttribLocation(prog, "a_texcoord"); 
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf.p); 
+    gl.vertexAttribPointer(pos, 3, gl.FLOAT, false, 0, 0); 
+    gl.enableVertexAttribArray(pos);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf.n); 
+    gl.vertexAttribPointer(norm, 3, gl.FLOAT, false, 0, 0); 
+    gl.enableVertexAttribArray(norm);
+
+    if (buf.t && tex !== -1) {
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf.t);
+        gl.vertexAttribPointer(tex, 2, gl.FLOAT, false, 0, 0); 
+        gl.enableVertexAttribArray(tex);
+    } else if (tex !== -1) {
+        gl.disableVertexAttribArray(tex); 
+    }
+
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buf.i);
 }
-
 function morrer() {
     gameRunning = false;
     document.getElementById("finalScore").innerText = score;
     document.getElementById("ui").style.display = "none";
     document.getElementById("instructions").style.display = "none";
     document.getElementById("gameOver").style.display = "block";
+}
+function loadTexture(gl, url) {
+    const texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+
+    const level = 0;
+    const internalFormat = gl.RGBA;
+    const width = 1;
+    const height = 1;
+    const border = 0;
+    const srcFormat = gl.RGBA;
+    const srcType = gl.UNSIGNED_BYTE;
+    const pixel = new Uint8Array([0, 0, 255, 255]); 
+    gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
+                  width, height, border, srcFormat, srcType,
+                  pixel);
+
+    const image = new Image();
+    image.onload = function() {
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
+                      srcFormat, srcType, image);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+        
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    };
+    image.src = url;
+
+    return texture;
 }
 window.onload = main;
