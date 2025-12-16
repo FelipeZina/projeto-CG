@@ -653,8 +653,12 @@ function main() {
 
             let mCar = Matrix.translate(Matrix.identity(), carro.x * PASSO, 0.0, carro.z * PASSO);
 
-            // [FIX] Rotate car 90 degrees to align with road
-            mCar = Matrix.rotateY(mCar, Math.PI / 2);
+            // [FIX] Rotate car based on direction
+            if (carro.speed > 0) {
+                mCar = Matrix.rotateY(mCar, Math.PI / 2); // Face Right
+            } else {
+                mCar = Matrix.rotateY(mCar, -Math.PI / 2); // Face Left
+            }
 
             // Voxel car scale adjustment
             mCar = Matrix.scale(mCar, 0.8, 0.8, 0.8);
