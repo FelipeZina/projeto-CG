@@ -31,8 +31,8 @@ const PU_SPEED = 1;
 const PU_TIME = 2;
 
 // ciclo dia e noite
-let gameTime = 0; // 0 to 2*Math.PI
-const TIME_SPEED = 0.0005; // Ajuste para mais rápido ou devagar
+let gameTime = 0; 
+const TIME_SPEED = 0.0005; 
 
 let texGrass, texRoad, texWater;
 
@@ -99,7 +99,7 @@ function gerarMapa() {
                     valid = true;
                     // Verifica distância com outros carros recém criados nesta faixa
                     for (let otherX of carrosNaFaixa) {
-                        if (Math.abs(startX - otherX) < 8.0) { // Distância mínima aumentada para 8.0 para evitar clip
+                        if (Math.abs(startX - otherX) < 8.0) { 
                             valid = false;
                             break;
                         }
@@ -140,7 +140,7 @@ function iniciarJogo(modo) {
     hasShield = false;
     isTimeFrozen = false;
     moveDuration = 150;
-    gameTime = 0; // Reinicia ciclo
+    gameTime = 0; 
 
     document.getElementById("score").innerText = 0;
 
@@ -162,14 +162,11 @@ function mostrarMensagem(texto, cor) {
     el.innerText = texto;
     el.style.color = cor;
 
-    // Efeito de aparecer
     el.style.opacity = 1;
     el.style.transform = "translate(-50%, -50%) scale(1.2)"; // Aumenta um pouco (pop)
 
-    // Limpa timer anterior se houver
     if (msgTimeout) clearTimeout(msgTimeout);
 
-    // Some depois de 2 segundos
     msgTimeout = setTimeout(() => {
         el.style.opacity = 0;
         el.style.transform = "translate(-50%, -50%) scale(1.0)";
@@ -178,23 +175,18 @@ function mostrarMensagem(texto, cor) {
 function ativarPowerUp(tipo) {
     if (tipo === PU_SHIELD) {
         hasShield = true;
-        // console.log("ESCUDO ATIVO! Proteção contra 1 batida.");
-        mostrarMensagem("🛡️ ESCUDO ATIVO!", "#00FFFF"); // Ciano
+        mostrarMensagem("🛡️ ESCUDO ATIVO!", "#00FFFF"); 
     }
     else if (tipo === PU_SPEED) {
-        // console.log("VELOCIDADE EXTRA! (8s)");
-        mostrarMensagem("⚡ VELOCIDADE MÁXIMA!", "#FFFF00"); // Amarelo
+        mostrarMensagem("⚡ VELOCIDADE MÁXIMA!", "#FFFF00"); 
 
         moveDuration = 70;
         setTimeout(() => {
             moveDuration = 150;
-            // Opcional: Avisar que acabou
-            // mostrarMensagem("Velocidade Normal", "#FFFFFF");
         }, 8000);
     }
     else if (tipo === PU_TIME) {
-        // console.log("TEMPO PARADO! (5s)");
-        mostrarMensagem("⏳ TEMPO CONGELADO!", "#FF00FF"); // Roxo/Rosa
+        mostrarMensagem("⏳ TEMPO CONGELADO!", "#FF00FF"); 
 
         isTimeFrozen = true;
         setTimeout(() => {
@@ -203,20 +195,16 @@ function ativarPowerUp(tipo) {
     }
 }
 
-// Função morrer recebe 'instakill'
 function morrer(instakill) {
-    // Se tem escudo e NÃO é morte instantânea (Tronco)
     if (hasShield && !instakill) {
         console.log("ESCUDO SALVOU! Pulando pra frente.");
         hasShield = false;
 
-        // Empurrar um bloco "pra frente" (Z negativo é frente)
         targetZ -= 1;
         currentZ = targetZ;
-        return; // O jogo CONTINUA
+        return; 
     }
 
-    // Se bateu no tronco (instakill=true) ou não tinha escudo
     gameRunning = false;
     document.getElementById("finalScore").innerText = score;
     document.getElementById("ui").style.display = "none";
@@ -263,7 +251,6 @@ function main() {
     const lilyDataObj = createLilypadModel();
     const lilyBuffers = createBuffers(gl, lilyDataObj);
 
-    // Multiple Voxel Car Models (Colors)
     const carColorsDefs = [
         [0.8, 0.2, 0.2], // Red
         [0.2, 0.4, 0.8], // Blue
@@ -273,7 +260,6 @@ function main() {
         [0.9, 0.5, 0.1]  // Orange
     ];
 
-    // Cria Buffer para cada cor
     const carBuffersList = carColorsDefs.map(color => {
         const data = createCarModel(color[0], color[1], color[2]);
         return createBuffers(gl, data);
@@ -430,16 +416,13 @@ function main() {
             if (gameTime > Math.PI * 2) gameTime -= Math.PI * 2;
         }
 
-        // Calcula a posição do sol
         const sunX = Math.cos(gameTime);
-        const sunY = Math.sin(gameTime); // Altura
+        const sunY = Math.sin(gameTime); 
 
-        // Transição de cores
         let skyColor, sunColor, moonColor, ambColor;
 
         if (sunY > 0) {
             // Dia
-            // Interpoal baseado em sunY (0 to 1)
             let t = sunY;
             if (t < 0.2) {
                 // Sunrise/Sunset (Laranja/Rosado)
@@ -587,7 +570,7 @@ function main() {
             if (hasShield) gl.uniform3fv(loc.color, [0.8, 0.8, 1.0]);
             else gl.uniform3fv(loc.color, [0.2, 0.8, 0.2]);
 
-            let mSapo = Matrix.scale(mChar, 5.0, 5.0, 5.0);
+            let mSapo = Matrix.scale(mChar, 3.0, 3.0, 3.0);
             gl.uniformMatrix4fv(loc.model, false, mSapo);
             gl.uniformMatrix4fv(loc.invTrans, false, mSapo);
             gl.drawElements(gl.TRIANGLES, sapoData.indices.length, gl.UNSIGNED_SHORT, 0);
@@ -692,9 +675,9 @@ function main() {
             let mCar = Matrix.translate(Matrix.identity(), carro.x * PASSO, 0.0, carro.z * PASSO);
 
             if (carro.speed > 0) {
-                mCar = Matrix.rotateY(mCar, Math.PI / 2); // Olhar pra direita
+                mCar = Matrix.rotateY(mCar, Math.PI / 2); 
             } else {
-                mCar = Matrix.rotateY(mCar, -Math.PI / 2); // Olhar pra esquerda
+                mCar = Matrix.rotateY(mCar, -Math.PI / 2); 
             }
 
             mCar = Matrix.scale(mCar, 0.8, 0.8, 0.8);

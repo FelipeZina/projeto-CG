@@ -1,13 +1,12 @@
-// --- FUNÇÕES AUXILIARES E MATEMÁTICA ---
 function parseOBJ(text) {
     const positions = [];
     const normals = [];
-    const texcoords = []; // Array para coordenadas UV
+    const texcoords = [];
     const indices = [];
 
     const tempVertices = [];
     const tempNormals = [];
-    const tempTexCoords = []; // Armazena os vts do arquivo
+    const tempTexCoords = [];
 
     const lines = text.split('\n');
     for (let line of lines) {
@@ -22,13 +21,11 @@ function parseOBJ(text) {
         } else if (keyword === 'vn') {
             tempNormals.push(args.map(parseFloat));
         } else if (keyword === 'vt') {
-            // Lê coordenadas de textura (u, v)
             tempTexCoords.push(args.map(parseFloat));
         } else if (keyword === 'f') {
             const faceVerts = args.map(f => {
                 const parts = f.split('/');
                 const v = parseInt(parts[0]) - 1;
-                // O formato é v/vt/vn. O segundo elemento é a textura.
                 const t = parts.length > 1 && parts[1] ? parseInt(parts[1]) - 1 : undefined;
                 const n = parts.length > 2 && parts[2] ? parseInt(parts[2]) - 1 : undefined;
                 return { v, t, n };
@@ -37,14 +34,12 @@ function parseOBJ(text) {
             for (let i = 1; i < faceVerts.length - 1; i++) {
                 const tri = [faceVerts[0], faceVerts[i], faceVerts[i + 1]];
                 tri.forEach(({ v, t, n }) => {
-                    // Posição
                     positions.push(...tempVertices[v]);
 
-                    // Textura
                     if (t !== undefined && tempTexCoords[t]) {
                         texcoords.push(tempTexCoords[t][0], tempTexCoords[t][1]);
                     } else {
-                        texcoords.push(0, 0); // Placeholder se não tiver textura
+                        texcoords.push(0, 0);
                     }
 
                     const norm = n !== undefined ? tempNormals[n] : [0, 1, 0];
@@ -111,7 +106,6 @@ function multiply(a, b) {
 }
 function lerp(start, end, t) { return start * (1 - t) + end * t; }
 
-// --- FUNÇÕES AUXILIARES DE WEBGL ---
 function createShader(gl, type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; }
 function createProgram(gl, vs, fs) { const p = gl.createProgram(); gl.attachShader(p, createShader(gl, gl.VERTEX_SHADER, vs)); gl.attachShader(p, createShader(gl, gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p); return p; }
 function createBuffers(gl, data) {
@@ -165,7 +159,6 @@ function useBuffers(gl, buf, prog) {
         gl.disableVertexAttribArray(tex);
     }
 
-    // [NEW] Bind Cor
     const col = gl.getAttribLocation(prog, "a_color");
     if (buf.c && col !== -1) {
         gl.bindBuffer(gl.ARRAY_BUFFER, buf.c);
@@ -173,7 +166,7 @@ function useBuffers(gl, buf, prog) {
         gl.enableVertexAttribArray(col);
     } else if (col !== -1) {
         gl.disableVertexAttribArray(col);
-        gl.vertexAttrib3f(col, 1.0, 1.0, 1.0); // Cor padrão se não tiver atributo
+        gl.vertexAttrib3f(col, 1.0, 1.0, 1.0);
     }
 
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buf.i);

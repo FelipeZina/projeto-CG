@@ -76,33 +76,26 @@
 
         #startMenu {
             width: 700px;
-            /* Mais largo */
             max-width: 90%;
             padding: 20px;
             display: flex;
-            /* Habilita colunas */
             flex-direction: row;
-            /* Coloca um do lado do outro */
             align-items: flex-start;
             gap: 20px;
-            /* Espaço entre as colunas */
         }
 
-        /* Coluna da Esquerda (Botões) */
         .menu-left {
             flex: 1;
             border-right: 2px solid rgba(255, 255, 255, 0.3);
-            /* Linha divisória */
             padding-right: 20px;
             display: flex;
             flex-direction: column;
             justify-content: center;
         }
 
-        /* Coluna da Direita (Guia/Info) */
+        
         .menu-right {
             flex: 1.2;
-            /* Um pouco mais largo que os botões */
             text-align: left;
             font-size: 15px;
             display: flex;
@@ -136,9 +129,7 @@
             letter-spacing: 1px;
         }
 
-        /* --- ÍCONES CSS (Para não precisar de imagens externas) --- */
 
-        /* Moeda Amarela */
         .icon-coin {
             width: 40px;
             height: 40px;
@@ -150,27 +141,18 @@
             flex-shrink: 0;
         }
 
-        /* Cubo PowerUp (Vermelho) */
-        /* PowerUp Vermelho (Estilo Moeda) */
         .icon-powerup {
             width: 40px;
-            /* Mesmo tamanho da moeda */
             height: 40px;
-            /* Gradiente vermelho para parecer uma esfera */
             background: radial-gradient(circle, #ff4444 30%, #cc0000 90%);
             border-radius: 50%;
-            /* Deixa redondo */
             border: 2px solid #fff;
             box-shadow: 0 0 10px #ff0000;
-            /* Brilho vermelho */
-            /* Usa a MESMA animação de giro da moeda */
             animation: spinCoin 3s infinite linear;
             flex-shrink: 0;
         }
 
-        /* PODE APAGAR O @keyframes pulseCube, não vamos mais usar */
 
-        /* Animações dos ícones */
         @keyframes spinCoin {
             0% {
                 transform: rotateY(0deg);
@@ -225,11 +207,9 @@
             display: none;
         }
 
-        /* Estilo da Mensagem de Power Up */
         #powerUpMsg {
             position: absolute;
             top: 20%;
-            /* Fica no topo da tela */
             left: 50%;
             transform: translate(-50%, -50%);
             font-size: 32px;
@@ -237,9 +217,7 @@
             text-align: center;
             text-shadow: 2px 2px 0px #000;
             opacity: 0;
-            /* Começa invisível */
             transition: opacity 0.5s, transform 0.3s;
-            /* Animação suave */
             pointer-events: none;
             z-index: 10;
             width: 100%;
