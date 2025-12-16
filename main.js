@@ -238,15 +238,37 @@ function gerarMapa() {
             let speed = (0.05 + Math.random() * 0.05) * direction;
 
             let numCarros = 1 + Math.floor(Math.random() * 2);
+            let carrosNaFaixa = []; // [FIX] Array temporário para verificar sobreposição
 
             for (let k = 0; k < numCarros; k++) {
-                let startX = -15 + Math.random() * 30;
-                carros.push({
-                    x: startX,
-                    z: z,
-                    speed: speed,
-                    color: [Math.random(), Math.random(), Math.random()]
-                });
+                let startX;
+                let valid = false;
+                let attempts = 0;
+
+                // Tenta encontrar uma posição válida (sem sobreposição)
+                while (!valid && attempts < 10) {
+                    startX = -15 + Math.random() * 30;
+                    valid = true;
+                    // Verifica distância com outros carros recém criados nesta faixa
+                    for (let otherX of carrosNaFaixa) {
+                        if (Math.abs(startX - otherX) < 8.0) { // Distância mínima aumentada para 8.0 para evitar clip
+                            valid = false;
+                            break;
+                        }
+                    }
+                    attempts++;
+                }
+
+                if (valid) {
+                    carrosNaFaixa.push(startX);
+                    carros.push({
+                        x: startX,
+                        z: z,
+                        speed: speed,
+                        // color: [Math.random(), Math.random(), Math.random()] // Not used with current voxel model but kept structure
+                        color: [0, 0, 0] // Placeholder
+                    });
+                }
             }
         }
     }
