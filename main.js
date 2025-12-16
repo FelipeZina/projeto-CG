@@ -475,7 +475,7 @@ const floorData = {
         if (cameraMode === 'froggy') {
             view = Matrix.lookAt([rx, 20, rz + 20], [rx, 2, rz], [0,1,0]);
         } else {
-            view = Matrix.lookAt([rx + 20, 20, rz + 20], [rx, 0, rz], [0,1,0]);
+            view = Matrix.lookAt([rx + 13, 20, rz + 20], [rx, 0, rz], [0,1,0]);
         }
         gl.uniformMatrix4fv(loc.proj, false, proj);
         gl.uniformMatrix4fv(loc.view, false, view);
@@ -707,16 +707,19 @@ function loadTexture(gl, url) {
                   pixel);
 
     const image = new Image();
-    image.onload = function() {
+image.onload = function() {
         gl.bindTexture(gl.TEXTURE_2D, texture);
         gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
                       srcFormat, srcType, image);
+
+        // --- MUDANÇA CRUCIAL PARA REPETIR ---
+        // Configura para repetir a imagem (tiling)
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
         
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        // Usa filtro Linear ou Mipmap se possível
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     };
     image.src = url;
 
