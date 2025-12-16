@@ -336,7 +336,8 @@ function main() {
     const heroLetrasData = parseOBJ(heroiLetras);
     const heroLetrasBuffers = createBuffers(gl, heroLetrasData);
 
-    const lilyDataObj = parseOBJ(vitoriaRegiaData);
+    // [MODIFIED] Using Voxel Lilypad Model
+    const lilyDataObj = createLilypadModel();
     const lilyBuffers = createBuffers(gl, lilyDataObj);
 
     // [MODIFIED] Using Voxel Car Model
@@ -611,17 +612,19 @@ function main() {
         }
 
         useBuffers(gl, lilyBuffers, prog);
-        gl.uniform3fv(loc.color, [0.0, 0.5, 0.0]);
+        gl.uniform1i(gl.getUniformLocation(prog, "u_useVertexColor"), 1); // Enable vertex colors for lilypad
+
         for (const obs of obstaculos) {
             if (Math.abs(obs.z - targetZ) > 40) continue;
             if (obs.type === 'lilypad') {
                 let mLily = Matrix.translate(Matrix.identity(), obs.x * PASSO, 0, obs.z * PASSO);
-                mLily = Matrix.scale(mLily, 1.2, 0.5, 1.2);
+                mLily = Matrix.scale(mLily, 1.2, 1.2, 1.2);  // Adjusted scale for voxel model
                 gl.uniformMatrix4fv(loc.model, false, mLily);
                 gl.uniformMatrix4fv(loc.invTrans, false, mLily);
                 gl.drawElements(gl.TRIANGLES, lilyDataObj.indices.length, gl.UNSIGNED_SHORT, 0);
             }
         }
+        gl.uniform1i(gl.getUniformLocation(prog, "u_useVertexColor"), 0); // Disable
 
         useBuffers(gl, coinBuffers, prog);
         gl.uniform3fv(loc.color, [1.0, 0.84, 0.0]);

@@ -107,8 +107,26 @@ function createCarModel() {
     addCube(data, wheelX, wheelY, -wheelZ, 0.1, 0.1, 0.1, 0.4, 0.5, 0.6);
 
     // Faróis (Amarelos)
-    addCube(data, -0.6, 0.45, 1.51, 1.0, 1.0, 0.0, 0.3, 0.2, 0.1);
     addCube(data, 0.6, 0.45, 1.51, 1.0, 1.0, 0.0, 0.3, 0.2, 0.1);
+
+    return data;
+}
+
+function createLilypadModel() {
+    const data = { positions: [], normals: [], colors: [], indices: [], texcoords: [] };
+
+    // Base da Vitória Régia (Verde Escuro)
+    addCube(data, 0, 0.05, 0, 0.0, 0.5, 0.1, 1.2, 0.1, 1.2);
+
+    // Bordas (simulando formato circular/octogonal com cubos)
+    addCube(data, 0.7, 0.05, 0.0, 0.0, 0.5, 0.1, 0.4, 0.1, 0.8);
+    addCube(data, -0.7, 0.05, 0.0, 0.0, 0.5, 0.1, 0.4, 0.1, 0.8);
+    addCube(data, 0.0, 0.05, 0.7, 0.0, 0.5, 0.1, 0.8, 0.1, 0.4);
+    addCube(data, 0.0, 0.05, -0.7, 0.0, 0.5, 0.1, 0.8, 0.1, 0.4);
+
+    // Flor em cima (Rosa)
+    addCube(data, 0, 0.2, 0, 1.0, 0.75, 0.8, 0.4, 0.2, 0.4); // Base
+    addCube(data, 0, 0.3, 0, 1.0, 0.9, 0.9, 0.2, 0.2, 0.2); // Miolo
 
     return data;
 }
