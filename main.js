@@ -8,7 +8,8 @@ const vertexShaderSource = `
     varying vec3 v_normal;
     varying vec2 v_texcoord; 
     varying vec3 v_color;       // [NEW]
-    
+    varying vec3 v_worldPosition; // [NEW] Posição do mundo para specular
+
     uniform mat4 u_modelMatrix;
     uniform mat4 u_viewMatrix;
     uniform mat4 u_projectionMatrix;
@@ -21,6 +22,7 @@ const vertexShaderSource = `
         v_normal = mat3(u_worldInverseTranspose) * a_normal;
         v_texcoord = a_texcoord; 
         v_color = a_color;      // [NEW] Passa cor para o fragmento
+        v_worldPosition = worldPosition.xyz; // [NEW] Passa posição do mundo
     }
 `;
 
@@ -40,22 +42,40 @@ const fragmentShaderSource = `
     uniform vec3 u_lightColor2;
     uniform vec3 u_ambientColor;
 
+    uniform vec3 u_viewWorldPosition; // [NEW] Posição da câmera para specular
+
     varying vec3 v_normal;
     varying vec2 v_texcoord;       
     varying vec3 v_color;          // [NEW]
+    varying vec3 v_worldPosition;  // [NEW]
     
     void main() {
         vec3 normal = normalize(v_normal);
+        vec3 surfaceToView = normalize(u_viewWorldPosition - v_worldPosition);
         
-        // --- ILUMINAÇÃO ---
+        // --- ILUMINAÇÃO PHONG (Blinn-Phong) ---
         // Luz 1 (Sol)
-        float diff1 = max(dot(normal, normalize(u_lightDirection1)), 0.0);
+        vec3 lightDir1 = normalize(u_lightDirection1);
+        float diff1 = max(dot(normal, lightDir1), 0.0);
+        float spec1 = 0.0;
+        if (diff1 > 0.0) {
+            vec3 halfVector1 = normalize(lightDir1 + surfaceToView);
+            spec1 = pow(max(dot(normal, halfVector1), 0.0), 50.0); // Shininess
+        }
         
         // Luz 2 (Lua / Contra-luz)
-        float diff2 = max(dot(normal, normalize(u_lightDirection2)), 0.0);
+        vec3 lightDir2 = normalize(u_lightDirection2);
+        float diff2 = max(dot(normal, lightDir2), 0.0);
+        float spec2 = 0.0;
+        if (diff2 > 0.0) {
+            vec3 halfVector2 = normalize(lightDir2 + surfaceToView);
+            spec2 = pow(max(dot(normal, halfVector2), 0.0), 50.0); // Shininess
+        }
         
-        // Combina ambiente + difusa 1 + difusa 2
-        vec3 lighting = u_ambientColor + (u_lightColor1 * diff1) + (u_lightColor2 * diff2);
+        // Combina ambiente + difusa + specular
+        vec3 lighting = u_ambientColor + 
+                        (u_lightColor1 * diff1) + (u_lightColor1 * spec1) +
+                        (u_lightColor2 * diff2) + (u_lightColor2 * spec2);
 
         // --- COR BASE ---
         vec4 baseColor;
@@ -534,6 +554,7 @@ function main() {
         lightCol1: gl.getUniformLocation(prog, "u_lightColor1"),
         lightCol2: gl.getUniformLocation(prog, "u_lightColor2"),
         ambientCol: gl.getUniformLocation(prog, "u_ambientColor"),
+        viewWorldPos: gl.getUniformLocation(prog, "u_viewWorldPosition"), // [NEW]
 
         invTrans: gl.getUniformLocation(prog, "u_worldInverseTranspose"),
         isTextured: gl.getUniformLocation(prog, "u_isTextured"),
@@ -707,8 +728,18 @@ function main() {
         } else {
             view = Matrix.lookAt([rx + 13, 20, rz + 20], [rx, 0, rz], [0, 1, 0]);
         }
+
         gl.uniformMatrix4fv(loc.proj, false, proj);
         gl.uniformMatrix4fv(loc.view, false, view);
+
+        // [NEW] Passa a posição da câmera para cálculo especular
+        let camPos;
+        if (cameraMode === 'froggy') {
+            camPos = [rx, 20, rz + 20];
+        } else {
+            camPos = [rx + 13, 20, rz + 20];
+        }
+        gl.uniform3fv(loc.viewWorldPos, camPos);
 
         // Previous light setup removed, using new cycle logic above
 
