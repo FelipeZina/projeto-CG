@@ -31,9 +31,11 @@ const fragmentShaderSource = `
     uniform bool u_isTextured;     
     uniform bool u_useVertexColor; 
     
-    uniform vec3 u_lightDirection1; 
-    uniform vec3 u_lightDirection2; 
-
+    uniform vec3 u_ambientColor;
+    uniform vec3 u_lightColor;
+    
+    uniform vec3 u_lightDirection; 
+ 
     varying vec3 v_normal;
     varying vec2 v_texcoord;       
     varying vec3 v_color;          
@@ -41,10 +43,11 @@ const fragmentShaderSource = `
     void main() {
         vec3 normal = normalize(v_normal);
         
-        float light1 = max(dot(normal, normalize(u_lightDirection1)), 0.0);
-        float light2 = max(dot(normal, normalize(u_lightDirection2)), 0.0);
+        // Luz Direcional (Sol/Lua)
+        float lightIntensity = max(dot(normal, normalize(u_lightDirection)), 0.0);
         
-        float totalLight = 0.5 + (light1 * 0.5) + (light2 * 0.4);
+        // Combina: Cor do Objeto * (Ambiente + (LuzDir * CorLuz))
+        vec3 lighting = u_ambientColor + (u_lightColor * lightIntensity);
 
         vec4 baseColor;
         
@@ -56,19 +59,19 @@ const fragmentShaderSource = `
             baseColor = vec4(u_color, 1.0);
         }
 
-        gl_FragColor = vec4(baseColor.rgb * totalLight, 1.0);
+        gl_FragColor = vec4(baseColor.rgb * lighting, 1.0);
     }
 `;
 
 function parseOBJ(text) {
     const positions = [];
     const normals = [];
-    const texcoords = []; 
+    const texcoords = [];
     const indices = [];
 
     const tempVertices = [];
     const tempNormals = [];
-    const tempTexCoords = []; 
+    const tempTexCoords = [];
 
     const lines = text.split('\n');
     for (let line of lines) {
@@ -100,7 +103,7 @@ function parseOBJ(text) {
                     if (t !== undefined && tempTexCoords[t]) {
                         texcoords.push(tempTexCoords[t][0], tempTexCoords[t][1]);
                     } else {
-                        texcoords.push(0, 0); 
+                        texcoords.push(0, 0);
                     }
                     const norm = n !== undefined ? tempNormals[n] : [0, 1, 0];
                     normals.push(...norm);
@@ -196,7 +199,13 @@ const PU_SHIELD = 0;
 const PU_SPEED = 1;
 const PU_TIME = 2;
 
+
 let texGrass, texRoad, texWater;
+
+// Day/Night Cycle Variables
+let gameTime = 12.0; // Start at Noon (0-24h)
+const DAY_DURATION = 30; // Seconds for a full day
+
 
 function gerarMapa() {
     obstaculos = [];
@@ -248,7 +257,7 @@ function gerarMapa() {
             let direction = (z % 2 === 0) ? 1 : -1;
             let speed = (0.05 + Math.random() * 0.05) * direction;
             let numCarros = 1 + Math.floor(Math.random() * 2);
-            let carrosNaFaixa = []; 
+            let carrosNaFaixa = [];
 
             for (let k = 0; k < numCarros; k++) {
                 let startX;
@@ -259,7 +268,7 @@ function gerarMapa() {
                     startX = -15 + Math.random() * 30;
                     valid = true;
                     for (let otherX of carrosNaFaixa) {
-                        if (Math.abs(startX - otherX) < 8.0) { 
+                        if (Math.abs(startX - otherX) < 8.0) {
                             valid = false;
                             break;
                         }
@@ -273,7 +282,7 @@ function gerarMapa() {
                         x: startX,
                         z: z,
                         speed: speed,
-                        modelIndex: Math.floor(Math.random() * 6) 
+                        modelIndex: Math.floor(Math.random() * 6)
                     });
                 }
             }
@@ -316,12 +325,12 @@ function iniciarJogo(modo) {
 let loopDoJogo;
 function mostrarMensagem(texto, cor) {
     const el = document.getElementById("powerUpMsg");
-    if (!el) return; 
+    if (!el) return;
     el.innerText = texto;
     el.style.color = cor;
 
     el.style.opacity = 1;
-    el.style.transform = "translate(-50%, -50%) scale(1.2)"; 
+    el.style.transform = "translate(-50%, -50%) scale(1.2)";
 
     if (msgTimeout) clearTimeout(msgTimeout);
 
@@ -333,17 +342,17 @@ function mostrarMensagem(texto, cor) {
 function ativarPowerUp(tipo) {
     if (tipo === PU_SHIELD) {
         hasShield = true;
-        mostrarMensagem("🛡️ ESCUDO ATIVO!", "#00FFFF"); 
+        mostrarMensagem("🛡️ ESCUDO ATIVO!", "#00FFFF");
     }
     else if (tipo === PU_SPEED) {
-        mostrarMensagem("⚡ VELOCIDADE MÁXIMA!", "#FFFF00"); 
+        mostrarMensagem("⚡ VELOCIDADE MÁXIMA!", "#FFFF00");
         moveDuration = 70;
         setTimeout(() => {
             moveDuration = 150;
         }, 8000);
     }
     else if (tipo === PU_TIME) {
-        mostrarMensagem("⏳ TEMPO CONGELADO!", "#FF00FF"); 
+        mostrarMensagem("⏳ TEMPO CONGELADO!", "#FF00FF");
         isTimeFrozen = true;
         setTimeout(() => {
             isTimeFrozen = false;
@@ -357,7 +366,7 @@ function morrer(instakill) {
         hasShield = false;
         targetZ -= 1;
         currentZ = targetZ;
-        return; 
+        return;
     }
 
     gameRunning = false;
@@ -406,12 +415,12 @@ function main() {
     const lilyBuffers = createBuffers(gl, lilyDataObj);
 
     const carColorsDefs = [
-        [0.8, 0.2, 0.2], 
-        [0.2, 0.4, 0.8], 
-        [0.9, 0.9, 0.1], 
-        [0.1, 0.8, 0.2], 
-        [0.8, 0.2, 0.8], 
-        [0.9, 0.5, 0.1]  
+        [0.8, 0.2, 0.2],
+        [0.2, 0.4, 0.8],
+        [0.9, 0.9, 0.1],
+        [0.1, 0.8, 0.2],
+        [0.8, 0.2, 0.8],
+        [0.9, 0.5, 0.1]
     ];
 
     const carBuffersList = carColorsDefs.map(color => {
@@ -419,9 +428,9 @@ function main() {
         return createBuffers(gl, data);
     });
 
-    const carGeometryCount = createCarModel(1,1,1).indices.length;
+    const carGeometryCount = createCarModel(1, 1, 1).indices.length;
 
-    
+
     texGrass = loadTexture(gl, 'grass.jpg');
     texRoad = loadTexture(gl, 'road.jpg');
     texWater = loadTexture(gl, 'water.jpg');
@@ -469,8 +478,9 @@ function main() {
         proj: gl.getUniformLocation(prog, "u_projectionMatrix"),
         color: gl.getUniformLocation(prog, "u_color"),
 
-        lightDir1: gl.getUniformLocation(prog, "u_lightDirection1"),
-        lightDir2: gl.getUniformLocation(prog, "u_lightDirection2"),
+        lightDir: gl.getUniformLocation(prog, "u_lightDirection"),
+        lightColor: gl.getUniformLocation(prog, "u_lightColor"),
+        ambientColor: gl.getUniformLocation(prog, "u_ambientColor"),
 
         invTrans: gl.getUniformLocation(prog, "u_worldInverseTranspose"),
         isTextured: gl.getUniformLocation(prog, "u_isTextured"),
@@ -501,7 +511,7 @@ function main() {
 
         if (tentouMover) {
             if (proximoX < -10 || proximoX > 10) {
-                return; 
+                return;
             }
 
             const bateu = obstaculos.find(obs => obs.x === proximoX && obs.z === proximoZ && obs.type !== 'lilypad');
@@ -550,45 +560,67 @@ function main() {
     loopDoJogo = function () {
         if (!gameRunning) return;
 
+        // --- DAY / NIGHT CYCLE LOGIC ---
+        // Update Time
+        if (!isTimeFrozen) {
+            gameTime += (1.0 / 60.0) * (24.0 / DAY_DURATION); // Advance time
+        }
+        if (gameTime >= 24.0) gameTime -= 24.0;
+
+        // Calculate Sun/Moon Position
+        // 12 = Noon (Sun top), 0 or 24 = Midnight
+        // Angle 0 at 6am, PI at 6pm?
+        // Let's map 6am (6.0) to 0, 18pm (18.0) to PI
+        let cycleAngle = ((gameTime - 6.0) / 12.0) * Math.PI;
+
+        let sunX = Math.cos(cycleAngle);
+        let sunY = Math.sin(cycleAngle);
+        // Z slight offset so it's not perfect overhead
+        let sunDir = [sunX, sunY, 0.2];
+
+        // Colors
+        let skyColor, lightColor, ambientColor;
+
+        if (gameTime >= 6.0 && gameTime < 18.0) {
+            // DAY TIME
+            sunDir = [sunX, sunY, 0.2]; // Sun above
+
+            // Interpolate colors for Sunrise/Sunset
+            if (gameTime < 8.0) { // Sunrise (6-8)
+                // Blue to White/Yellow
+                lightColor = [1.0, 0.9, 0.8];
+                ambientColor = [0.4, 0.4, 0.5];
+                skyColor = [0.6, 0.7, 0.9]; // Morning Sky
+            } else if (gameTime > 16.0) { // Sunset (16-18)
+                lightColor = [1.0, 0.6, 0.3]; // Orange
+                ambientColor = [0.5, 0.4, 0.4];
+                skyColor = [0.8, 0.5, 0.4]; // Sunset Sky
+            } else { // Noon (8-16)
+                lightColor = [1.0, 1.0, 0.9]; // Bright White
+                ambientColor = [0.6, 0.6, 0.6];
+                skyColor = [0.53, 0.81, 0.98]; // Clear Blue
+            }
+        } else {
+            // NIGHT TIME
+            // Moon opposite to Sun
+            sunDir = [-sunX, -sunY, 0.2];
+
+            lightColor = [0.2, 0.2, 0.5]; // Blueish Moon Light
+            ambientColor = [0.1, 0.1, 0.2]; // Dark Ambient
+            skyColor = [0.05, 0.05, 0.2]; // Dark Blue Sky
+        }
+
+        // Update Uniforms
+        gl.clearColor(skyColor[0], skyColor[1], skyColor[2], 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-        if (troncoActive && !isTimeFrozen) {
-            troncoZ -= troncoSpeed;
-            let sapoRealZ = currentZ * PASSO;
-            if (troncoZ <= sapoRealZ + 2.0) {
-                console.log("ESMAGADO!");
-                morrer(true);
-                return;
-            }
-        }
+        gl.uniform3fv(loc.lightDir, sunDir);
+        gl.uniform3fv(loc.lightColor, lightColor);
+        gl.uniform3fv(loc.ambientColor, ambientColor);
 
-        let jumpY = 0;
-        if (isMoving) {
-            let t = (Date.now() - moveStartTime) / moveDuration;
-            if (t >= 1.0) { t = 1.0; isMoving = false; currentX = targetX; currentZ = targetZ; currentAngle = targetAngle; }
-            else {
-                currentX = lerp(startX, targetX, t);
-                currentZ = lerp(startZ, targetZ, t);
-                currentAngle = lerp(startAngle, targetAngle, t);
-                jumpY = Math.sin(t * Math.PI) * 1.5;
-            }
-        }
+        // Debug info on screen (optional, maybe in UI?)
+        // document.getElementById("score").innerText = \`Score: \${score} - Time: \${Math.floor(gameTime)}h\`;
 
-        const rx = currentX * PASSO;
-        const rz = currentZ * PASSO;
-
-        const proj = Matrix.perspective(50 * Math.PI / 180, canvas.width / canvas.height, 0.1, 500);
-
-        let view;
-        if (cameraMode === 'froggy') {
-            view = Matrix.lookAt([rx, 20, rz + 20], [rx, 2, rz], [0, 1, 0]);
-        } else {
-            view = Matrix.lookAt([rx + 13, 20, rz + 20], [rx, 0, rz], [0, 1, 0]);
-        }
-        gl.uniformMatrix4fv(loc.proj, false, proj);
-        gl.uniformMatrix4fv(loc.view, false, view);
-        gl.uniform3fv(loc.lightDir1, [0.8, 1.0, 0.5]);
-        gl.uniform3fv(loc.lightDir2, [-0.8, 0.5, 0.5]);
 
         useBuffers(gl, floorBuffers, prog);
 
@@ -724,7 +756,7 @@ function main() {
                 gl.drawElements(gl.TRIANGLES, lilyDataObj.indices.length, gl.UNSIGNED_SHORT, 0);
             }
         }
-        gl.uniform1i(gl.getUniformLocation(prog, "u_useVertexColor"), 0); 
+        gl.uniform1i(gl.getUniformLocation(prog, "u_useVertexColor"), 0);
 
         useBuffers(gl, coinBuffers, prog);
         gl.uniform3fv(loc.color, [1.0, 0.84, 0.0]);
@@ -741,7 +773,7 @@ function main() {
             }
         }
 
-        gl.uniform1i(gl.getUniformLocation(prog, "u_useVertexColor"), 1); 
+        gl.uniform1i(gl.getUniformLocation(prog, "u_useVertexColor"), 1);
 
         for (const carro of carros) {
             if (Math.abs(carro.z - targetZ) > 40) continue;
@@ -775,7 +807,7 @@ function main() {
                 }
             }
         }
-        gl.uniform1i(gl.getUniformLocation(prog, "u_useVertexColor"), 0); 
+        gl.uniform1i(gl.getUniformLocation(prog, "u_useVertexColor"), 0);
 
         requestAnimationFrame(loopDoJogo);
     }
