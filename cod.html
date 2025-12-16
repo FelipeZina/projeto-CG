@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -17,14 +18,14 @@
             justify-content: center;
             height: 100vh;
         }
-        
+
         #gameContainer {
             position: relative;
             width: 800px;
             height: 600px;
-            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
         }
-        
+
         #gameCanvas {
             border: 2px solid #333;
             background-color: #87CEEB;
@@ -32,7 +33,7 @@
             height: 100%;
             display: block;
         }
-        
+
         #ui {
             position: absolute;
             top: 10px;
@@ -40,10 +41,10 @@
             color: white;
             font-size: 18px;
             text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
-            pointer-events: none; 
-            display: none; 
+            pointer-events: none;
+            display: none;
         }
-        
+
         #instructions {
             position: absolute;
             bottom: 10px;
@@ -52,9 +53,9 @@
             font-size: 14px;
             text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
             pointer-events: none;
-            display: none; 
+            display: none;
         }
-        
+
         .overlay-screen {
             position: absolute;
             top: 50%;
@@ -76,7 +77,7 @@
         #startMenu {
             display: block;
         }
-        
+
         button {
             background-color: #4CAF50;
             border: none;
@@ -94,47 +95,56 @@
         }
 
         button:hover {
-            transform: scale(1.05); 
+            transform: scale(1.05);
         }
 
-        #btnModeEasy { background-color: #4CAF50; } 
-        #btnModeNormal { background-color: #ff9800; } 
-        #btnModeHard { background-color: #f44336; } 
+        #btnModeEasy {
+            background-color: #4CAF50;
+        }
+
+        #btnModeNormal {
+            background-color: #ff9800;
+        }
+
+        #btnModeHard {
+            background-color: #f44336;
+        }
 
         #charBtn {
-            background-color: #ff9800; 
-            display: none; 
-            pointer-events: auto; 
+            background-color: #ff9800;
+            display: none;
+            pointer-events: auto;
             margin-top: 10px;
             border: 2px solid white;
             font-weight: bold;
-            width: auto; 
-            display: none; 
+            width: auto;
+            display: none;
         }
     </style>
 </head>
+
 <body>
 
     <h1>Crossy Road 3D</h1>
-    
+
     <div id="gameContainer">
         <canvas id="gameCanvas" width="800" height="600"></canvas>
-        
+
         <div id="ui">
             <div>Pontuação: <span id="score">0</span></div>
             <button id="charBtn">Trocar Personagem 🐸/🦸</button>
         </div>
-        
+
         <div id="instructions">
-            Use as teclas W, A, S, D ou setas para mover 
+            Use as teclas W, A, S, D ou setas para mover
         </div>
-        
-            <div id="startMenu" class="overlay-screen">
+
+        <div id="startMenu" class="overlay-screen">
             <h2>MENU PRINCIPAL</h2>
-            
+
             <p>Configuração:</p>
             <button id="btnCameraToggle" style="background-color: #2196F3;">Câmera: Froggy 🐸</button>
-            
+
             <p>Escolha a dificuldade:</p>
             <button id="btnModeEasy">Sem Tronco (Fácil)</button>
             <button id="btnModeNormal">Normal</button>
@@ -149,8 +159,10 @@
     </div>
 
     <script src="objeto.js"></script>
+    <script src="voxelModels.js"></script>
     <script src="m4.js"></script>
     <script src="main.js"></script>
 
 </body>
+
 </html>
