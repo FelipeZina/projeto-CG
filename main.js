@@ -1,13 +1,12 @@
-// --- SHADERS ---
 const vertexShaderSource = `
     attribute vec3 a_position;
     attribute vec3 a_normal;
     attribute vec2 a_texcoord; 
-    attribute vec3 a_color;     // [NEW] Cor por vértice
+    attribute vec3 a_color;    
     
     varying vec3 v_normal;
     varying vec2 v_texcoord; 
-    varying vec3 v_color;       // [NEW]
+    varying vec3 v_color;       
     
     uniform mat4 u_modelMatrix;
     uniform mat4 u_viewMatrix;
@@ -20,7 +19,7 @@ const vertexShaderSource = `
         
         v_normal = mat3(u_worldInverseTranspose) * a_normal;
         v_texcoord = a_texcoord; 
-        v_color = a_color;      // [NEW] Passa cor para o fragmento
+        v_color = a_color;      
     }
 `;
 
@@ -42,15 +41,11 @@ const fragmentShaderSource = `
     void main() {
         vec3 normal = normalize(v_normal);
         
-        // --- ILUMINAÇÃO ---
         float light1 = max(dot(normal, normalize(u_lightDirection1)), 0.0);
         float light2 = max(dot(normal, normalize(u_lightDirection2)), 0.0);
         
-        // AJUSTE DE BRILHO AQUI:
-        // Aumentei a base (0.6) para nada ficar preto
         float totalLight = 0.5 + (light1 * 0.5) + (light2 * 0.4);
 
-        // --- COR BASE ---
         vec4 baseColor;
         
         if (u_isTextured) {
@@ -61,21 +56,19 @@ const fragmentShaderSource = `
             baseColor = vec4(u_color, 1.0);
         }
 
-        // Aplica a luz
         gl_FragColor = vec4(baseColor.rgb * totalLight, 1.0);
     }
 `;
 
-// --- FUNÇÕES AUXILIARES E MATEMÁTICA ---
 function parseOBJ(text) {
     const positions = [];
     const normals = [];
-    const texcoords = []; // Array para coordenadas UV
+    const texcoords = []; 
     const indices = [];
 
     const tempVertices = [];
     const tempNormals = [];
-    const tempTexCoords = []; // Armazena os vts do arquivo
+    const tempTexCoords = []; 
 
     const lines = text.split('\n');
     for (let line of lines) {
@@ -90,13 +83,11 @@ function parseOBJ(text) {
         } else if (keyword === 'vn') {
             tempNormals.push(args.map(parseFloat));
         } else if (keyword === 'vt') {
-            // Lê coordenadas de textura (u, v)
             tempTexCoords.push(args.map(parseFloat));
         } else if (keyword === 'f') {
             const faceVerts = args.map(f => {
                 const parts = f.split('/');
                 const v = parseInt(parts[0]) - 1;
-                // O formato é v/vt/vn. O segundo elemento é a textura.
                 const t = parts.length > 1 && parts[1] ? parseInt(parts[1]) - 1 : undefined;
                 const n = parts.length > 2 && parts[2] ? parseInt(parts[2]) - 1 : undefined;
                 return { v, t, n };
@@ -105,16 +96,12 @@ function parseOBJ(text) {
             for (let i = 1; i < faceVerts.length - 1; i++) {
                 const tri = [faceVerts[0], faceVerts[i], faceVerts[i + 1]];
                 tri.forEach(({ v, t, n }) => {
-                    // Posição
                     positions.push(...tempVertices[v]);
-
-                    // Textura
                     if (t !== undefined && tempTexCoords[t]) {
                         texcoords.push(tempTexCoords[t][0], tempTexCoords[t][1]);
                     } else {
-                        texcoords.push(0, 0); // Placeholder se não tiver textura
+                        texcoords.push(0, 0); 
                     }
-
                     const norm = n !== undefined ? tempNormals[n] : [0, 1, 0];
                     normals.push(...norm);
                     indices.push(indices.length);
@@ -179,7 +166,6 @@ function multiply(a, b) {
 }
 function lerp(start, end, t) { return start * (1 - t) + end * t; }
 
-// --- VARIÁVEIS GLOBAIS ---
 let sapoX = 0, sapoZ = 0;
 let targetX = 0, targetZ = 0;
 let currentX = 0, currentZ = 0;
@@ -200,7 +186,6 @@ let troncoZ = 15.0;
 let troncoSpeed = 0.04;
 let troncoActive = true;
 
-// POWER UPS
 let powerUps = [];
 let hasShield = false;
 let isTimeFrozen = false;
@@ -210,6 +195,8 @@ let msgTimeout;
 const PU_SHIELD = 0;
 const PU_SPEED = 1;
 const PU_TIME = 2;
+
+let texGrass, texRoad, texWater;
 
 function gerarMapa() {
     obstaculos = [];
@@ -261,20 +248,18 @@ function gerarMapa() {
             let direction = (z % 2 === 0) ? 1 : -1;
             let speed = (0.05 + Math.random() * 0.05) * direction;
             let numCarros = 1 + Math.floor(Math.random() * 2);
-            let carrosNaFaixa = []; // [FIX] Array temporário para verificar sobreposição
+            let carrosNaFaixa = []; 
 
             for (let k = 0; k < numCarros; k++) {
                 let startX;
                 let valid = false;
                 let attempts = 0;
 
-                // Tenta encontrar uma posição válida (sem sobreposição)
                 while (!valid && attempts < 10) {
                     startX = -15 + Math.random() * 30;
                     valid = true;
-                    // Verifica distância com outros carros recém criados nesta faixa
                     for (let otherX of carrosNaFaixa) {
-                        if (Math.abs(startX - otherX) < 8.0) { // Distância mínima aumentada para 8.0 para evitar clip
+                        if (Math.abs(startX - otherX) < 8.0) { 
                             valid = false;
                             break;
                         }
@@ -288,7 +273,7 @@ function gerarMapa() {
                         x: startX,
                         z: z,
                         speed: speed,
-                        modelIndex: Math.floor(Math.random() * 6) // [NEW] Random color index (0-5) matching carBuffersList
+                        modelIndex: Math.floor(Math.random() * 6) 
                     });
                 }
             }
@@ -331,17 +316,15 @@ function iniciarJogo(modo) {
 let loopDoJogo;
 function mostrarMensagem(texto, cor) {
     const el = document.getElementById("powerUpMsg");
+    if (!el) return; 
     el.innerText = texto;
     el.style.color = cor;
 
-    // Efeito de aparecer
     el.style.opacity = 1;
-    el.style.transform = "translate(-50%, -50%) scale(1.2)"; // Aumenta um pouco (pop)
+    el.style.transform = "translate(-50%, -50%) scale(1.2)"; 
 
-    // Limpa timer anterior se houver
     if (msgTimeout) clearTimeout(msgTimeout);
 
-    // Some depois de 2 segundos
     msgTimeout = setTimeout(() => {
         el.style.opacity = 0;
         el.style.transform = "translate(-50%, -50%) scale(1.0)";
@@ -350,24 +333,17 @@ function mostrarMensagem(texto, cor) {
 function ativarPowerUp(tipo) {
     if (tipo === PU_SHIELD) {
         hasShield = true;
-        // console.log("ESCUDO ATIVO! Proteção contra 1 batida.");
-        mostrarMensagem("🛡️ ESCUDO ATIVO!", "#00FFFF"); // Ciano
+        mostrarMensagem("🛡️ ESCUDO ATIVO!", "#00FFFF"); 
     }
     else if (tipo === PU_SPEED) {
-        // console.log("VELOCIDADE EXTRA! (8s)");
-        mostrarMensagem("⚡ VELOCIDADE MÁXIMA!", "#FFFF00"); // Amarelo
-
+        mostrarMensagem("⚡ VELOCIDADE MÁXIMA!", "#FFFF00"); 
         moveDuration = 70;
         setTimeout(() => {
             moveDuration = 150;
-            // Opcional: Avisar que acabou
-            // mostrarMensagem("Velocidade Normal", "#FFFFFF");
         }, 8000);
     }
     else if (tipo === PU_TIME) {
-        // console.log("TEMPO PARADO! (5s)");
-        mostrarMensagem("⏳ TEMPO CONGELADO!", "#FF00FF"); // Roxo/Rosa
-
+        mostrarMensagem("⏳ TEMPO CONGELADO!", "#FF00FF"); 
         isTimeFrozen = true;
         setTimeout(() => {
             isTimeFrozen = false;
@@ -375,20 +351,15 @@ function ativarPowerUp(tipo) {
     }
 }
 
-// CORREÇÃO: Função morrer recebe 'instakill'
 function morrer(instakill) {
-    // Se tem escudo e NÃO é morte instantânea (Tronco)
     if (hasShield && !instakill) {
         console.log("ESCUDO SALVOU! Pulando pra frente.");
         hasShield = false;
-
-        // Empurrar um bloco "pra frente" (Z negativo é frente)
         targetZ -= 1;
         currentZ = targetZ;
-        return; // O jogo CONTINUA
+        return; 
     }
 
-    // Se bateu no tronco (instakill=true) ou não tinha escudo
     gameRunning = false;
     document.getElementById("finalScore").innerText = score;
     document.getElementById("ui").style.display = "none";
@@ -409,7 +380,6 @@ function main() {
     const prog = createProgram(gl, vertexShaderSource, fragmentShaderSource);
     gl.useProgram(prog);
 
-    // Buffers
     const sapoData = parseOBJ(frogData);
     const sapoBuffers = createBuffers(gl, sapoData);
 
@@ -432,50 +402,38 @@ function main() {
     const heroLetrasData = parseOBJ(heroiLetras);
     const heroLetrasBuffers = createBuffers(gl, heroLetrasData);
 
-    // [MODIFIED] Using Voxel Lilypad Model
     const lilyDataObj = createLilypadModel();
     const lilyBuffers = createBuffers(gl, lilyDataObj);
 
-    // [MODIFIED] Using Voxel Car Model (colors)
     const carColorsDefs = [
-        [0.8, 0.2, 0.2], // Red
-        [0.2, 0.4, 0.8], // Blue
-        [0.9, 0.9, 0.1], // Yellow
-        [0.1, 0.8, 0.2], // Green
-        [0.8, 0.2, 0.8], // Purple
-        [0.9, 0.5, 0.1]  // Orange
+        [0.8, 0.2, 0.2], 
+        [0.2, 0.4, 0.8], 
+        [0.9, 0.9, 0.1], 
+        [0.1, 0.8, 0.2], 
+        [0.8, 0.2, 0.8], 
+        [0.9, 0.5, 0.1]  
     ];
 
-    // Create a buffer for each color
     const carBuffersList = carColorsDefs.map(color => {
         const data = createCarModel(color[0], color[1], color[2]);
         return createBuffers(gl, data);
     });
 
-    // Keep a reference to geometry for draw call counts (all cars have same count)
-    const carGeometryCount = createCarModel().indices.length;
+    const carGeometryCount = createCarModel(1,1,1).indices.length;
 
-    // Texturas
-    const texGrass = loadTexture(gl, 'grass.jpg');
-    const texRoad = loadTexture(gl, 'road.jpg');
-    const texWater = loadTexture(gl, 'water.jpg');
+    
+    texGrass = loadTexture(gl, 'grass.jpg');
+    texRoad = loadTexture(gl, 'road.jpg');
+    texWater = loadTexture(gl, 'water.jpg');
 
     const floorData = {
         positions: [-100, 0, 100, 100, 0, 100, -100, 0, -100, 100, 0, -100],
         normals: [0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0],
-
-        texcoords: [
-            0, 0,
-            20, 0,
-            0, 1,
-            20, 1
-        ],
-
+        texcoords: [0, 0, 20, 0, 0, 1, 20, 1],
         indices: [0, 1, 2, 2, 1, 3]
     };
     const floorBuffers = createBuffers(gl, floorData);
 
-    // Event Listeners
     document.getElementById("btnModeEasy").addEventListener("click", () => iniciarJogo('easy'));
     document.getElementById("btnModeNormal").addEventListener("click", () => iniciarJogo('normal'));
     document.getElementById("btnModeHard").addEventListener("click", () => iniciarJogo('hard'));
@@ -516,7 +474,8 @@ function main() {
 
         invTrans: gl.getUniformLocation(prog, "u_worldInverseTranspose"),
         isTextured: gl.getUniformLocation(prog, "u_isTextured"),
-        texture: gl.getUniformLocation(prog, "u_texture")
+        texture: gl.getUniformLocation(prog, "u_texture"),
+        useVertexColor: gl.getUniformLocation(prog, "u_useVertexColor")
     };
 
     window.addEventListener("keydown", (e) => {
@@ -541,6 +500,10 @@ function main() {
         }
 
         if (tentouMover) {
+            if (proximoX < -10 || proximoX > 10) {
+                return; 
+            }
+
             const bateu = obstaculos.find(obs => obs.x === proximoX && obs.z === proximoZ && obs.type !== 'lilypad');
             if (bateu) { return; }
 
@@ -552,8 +515,6 @@ function main() {
                     obs.x === targetX && obs.z === targetZ && obs.type === 'lilypad'
                 );
                 if (!emCimaDaFolha) {
-                    // CORREÇÃO: Mudei de TRUE para FALSE.
-                    // Agora a água permite que o escudo salve.
                     setTimeout(() => morrer(false), 300);
                 }
             }
@@ -596,7 +557,6 @@ function main() {
             let sapoRealZ = currentZ * PASSO;
             if (troncoZ <= sapoRealZ + 2.0) {
                 console.log("ESMAGADO!");
-                // CORREÇÃO: Tronco sempre mata (instakill = true)
                 morrer(true);
                 return;
             }
@@ -627,16 +587,11 @@ function main() {
         }
         gl.uniformMatrix4fv(loc.proj, false, proj);
         gl.uniformMatrix4fv(loc.view, false, view);
-        // LUZ 1: "Sol" (Vem da Direita/Cima -> Cor AMARELA QUENTE)
         gl.uniform3fv(loc.lightDir1, [0.8, 1.0, 0.5]);
-        gl.uniform3fv(loc.lightCol1, [1.0, 0.9, 0.6]); // Amarelo claro
-
-        // LUZ 2: "Contra-Luz" (Vem da Esquerda -> Cor AZULADA)
         gl.uniform3fv(loc.lightDir2, [-0.8, 0.5, 0.5]);
-        gl.uniform3fv(loc.lightCol2, [0.2, 0.2, 0.6]); // Azul
+
         useBuffers(gl, floorBuffers, prog);
 
-        // Ativa o uso de texturas no shader
         gl.uniform1i(loc.isTextured, 1);
         gl.activeTexture(gl.TEXTURE0);
         gl.uniform1i(loc.texture, 0);
@@ -757,19 +712,19 @@ function main() {
         }
 
         useBuffers(gl, lilyBuffers, prog);
-        gl.uniform1i(gl.getUniformLocation(prog, "u_useVertexColor"), 1); // Enable vertex colors for lilypad
+        gl.uniform1i(gl.getUniformLocation(prog, "u_useVertexColor"), 1);
 
         for (const obs of obstaculos) {
             if (Math.abs(obs.z - targetZ) > 40) continue;
             if (obs.type === 'lilypad') {
                 let mLily = Matrix.translate(Matrix.identity(), obs.x * PASSO, 0, obs.z * PASSO);
-                mLily = Matrix.scale(mLily, 1.2, 1.2, 1.2);  // Adjusted scale for voxel model
+                mLily = Matrix.scale(mLily, 1.2, 1.2, 1.2);
                 gl.uniformMatrix4fv(loc.model, false, mLily);
                 gl.uniformMatrix4fv(loc.invTrans, false, mLily);
                 gl.drawElements(gl.TRIANGLES, lilyDataObj.indices.length, gl.UNSIGNED_SHORT, 0);
             }
         }
-        gl.uniform1i(gl.getUniformLocation(prog, "u_useVertexColor"), 0); // Disable
+        gl.uniform1i(gl.getUniformLocation(prog, "u_useVertexColor"), 0); 
 
         useBuffers(gl, coinBuffers, prog);
         gl.uniform3fv(loc.color, [1.0, 0.84, 0.0]);
@@ -786,7 +741,7 @@ function main() {
             }
         }
 
-        gl.uniform1i(gl.getUniformLocation(prog, "u_useVertexColor"), 1); // Enable vertex colors
+        gl.uniform1i(gl.getUniformLocation(prog, "u_useVertexColor"), 1); 
 
         for (const carro of carros) {
             if (Math.abs(carro.z - targetZ) > 40) continue;
@@ -797,46 +752,37 @@ function main() {
                 if (carro.x < -20) carro.x = 20;
             }
 
-            // Use the specific buffer for this car's color
-            // Note: switching buffers inside loop is not optimal for performance but fine for this low poly count
             const bufferToUse = carBuffersList[carro.modelIndex || 0];
             useBuffers(gl, bufferToUse, prog);
 
             let mCar = Matrix.translate(Matrix.identity(), carro.x * PASSO, 0.0, carro.z * PASSO);
 
-            // [FIX] Rotate car based on direction
             if (carro.speed > 0) {
-                mCar = Matrix.rotateY(mCar, Math.PI / 2); // Face Right
+                mCar = Matrix.rotateY(mCar, Math.PI / 2);
             } else {
-                mCar = Matrix.rotateY(mCar, -Math.PI / 2); // Face Left
+                mCar = Matrix.rotateY(mCar, -Math.PI / 2);
             }
 
-            // Voxel car scale adjustment
             mCar = Matrix.scale(mCar, 0.8, 0.8, 0.8);
             gl.uniformMatrix4fv(loc.model, false, mCar);
             gl.uniformMatrix4fv(loc.invTrans, false, mCar);
-            // We need the index count. Since all cars have same geometry count (just diff colors), we can use any
             gl.drawElements(gl.TRIANGLES, carGeometryCount, gl.UNSIGNED_SHORT, 0);
 
             if (Math.abs(carro.z - targetZ) < 0.3) {
                 if (Math.abs(carro.x - currentX) < 1.2) {
-                    // CORREÇÃO: false = não é instakill (permite escudo)
                     morrer(false);
-                    // Se o jogo acabou, retorna. Se o escudo salvou, continua.
                     if (!gameRunning) return;
                 }
             }
         }
-        gl.uniform1i(gl.getUniformLocation(prog, "u_useVertexColor"), 0); // Disable vertex colors for next frames
+        gl.uniform1i(gl.getUniformLocation(prog, "u_useVertexColor"), 0); 
 
         requestAnimationFrame(loopDoJogo);
     }
 
-    // Inicia o loop
     requestAnimationFrame(loopDoJogo);
 }
 
-// --- FUNÇÕES AUXILIARES DE WEBGL ---
 function createShader(gl, type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; }
 function createProgram(gl, vs, fs) { const p = gl.createProgram(); gl.attachShader(p, createShader(gl, gl.VERTEX_SHADER, vs)); gl.attachShader(p, createShader(gl, gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p); return p; }
 function createBuffers(gl, data) {
@@ -859,7 +805,6 @@ function createBuffers(gl, data) {
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, i);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(data.indices), gl.STATIC_DRAW);
 
-    // [NEW] Buffer de Cores
     let c = null;
     if (data.colors && data.colors.length > 0) {
         c = gl.createBuffer();
@@ -890,7 +835,6 @@ function useBuffers(gl, buf, prog) {
         gl.disableVertexAttribArray(tex);
     }
 
-    // [NEW] Bind Cor
     const col = gl.getAttribLocation(prog, "a_color");
     if (buf.c && col !== -1) {
         gl.bindBuffer(gl.ARRAY_BUFFER, buf.c);
@@ -898,7 +842,7 @@ function useBuffers(gl, buf, prog) {
         gl.enableVertexAttribArray(col);
     } else if (col !== -1) {
         gl.disableVertexAttribArray(col);
-        gl.vertexAttrib3f(col, 1.0, 1.0, 1.0); // Cor padrão se não tiver atributo
+        gl.vertexAttrib3f(col, 1.0, 1.0, 1.0);
     }
 
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buf.i);
