@@ -1,9 +1,3 @@
-// --- SHADERS ---
-// Shaders moved to shaders.js
-
-// --- FUNÇÕES AUXILIARES E MATEMÁTICA ---
-// Helpers moved to utils.js
-
 // --- VARIÁVEIS GLOBAIS ---
 let sapoX = 0, sapoZ = 0;
 let targetX = 0, targetZ = 0;
@@ -36,7 +30,7 @@ const PU_SHIELD = 0;
 const PU_SPEED = 1;
 const PU_TIME = 2;
 
-// DAY/NIGHT CYCLE
+// ciclo dia e noite
 let gameTime = 0; // 0 to 2*Math.PI
 const TIME_SPEED = 0.0005; // Ajuste para mais rápido ou devagar
 
@@ -92,7 +86,7 @@ function gerarMapa() {
             let direction = (z % 2 === 0) ? 1 : -1;
             let speed = (0.05 + Math.random() * 0.05) * direction;
             let numCarros = 1 + Math.floor(Math.random() * 2);
-            let carrosNaFaixa = []; // [FIX] Array temporário para verificar sobreposição
+            let carrosNaFaixa = [];
 
             for (let k = 0; k < numCarros; k++) {
                 let startX;
@@ -119,7 +113,7 @@ function gerarMapa() {
                         x: startX,
                         z: z,
                         speed: speed,
-                        modelIndex: Math.floor(Math.random() * 6) // [NEW] Random color index (0-5) matching carBuffersList
+                        modelIndex: Math.floor(Math.random() * 6) // Colorir carros randomicamente
                     });
                 }
             }
@@ -209,7 +203,7 @@ function ativarPowerUp(tipo) {
     }
 }
 
-// CORREÇÃO: Função morrer recebe 'instakill'
+// Função morrer recebe 'instakill'
 function morrer(instakill) {
     // Se tem escudo e NÃO é morte instantânea (Tronco)
     if (hasShield && !instakill) {
@@ -238,7 +232,6 @@ function main() {
     canvas.width = 800; canvas.height = 600;
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.enable(gl.DEPTH_TEST);
-    // gl.clearColor(0.53, 0.81, 0.98, 1.0); // Movido para dentro do loop (ciclo dia/noite)
 
     const prog = createProgram(gl, vertexShaderSource, fragmentShaderSource);
     gl.useProgram(prog);
@@ -266,11 +259,11 @@ function main() {
     const heroLetrasData = parseOBJ(heroiLetras);
     const heroLetrasBuffers = createBuffers(gl, heroLetrasData);
 
-    // [MODIFIED] Using Voxel Lilypad Model
+    // Voxel Lilypad Model
     const lilyDataObj = createLilypadModel();
     const lilyBuffers = createBuffers(gl, lilyDataObj);
 
-    // [MODIFIED] Multiple Voxel Car Models (Colors)
+    // Multiple Voxel Car Models (Colors)
     const carColorsDefs = [
         [0.8, 0.2, 0.2], // Red
         [0.2, 0.4, 0.8], // Blue
@@ -280,13 +273,12 @@ function main() {
         [0.9, 0.5, 0.1]  // Orange
     ];
 
-    // Create a buffer for each color
+    // Cria Buffer para cada cor
     const carBuffersList = carColorsDefs.map(color => {
         const data = createCarModel(color[0], color[1], color[2]);
         return createBuffers(gl, data);
     });
 
-    // Keep a reference to geometry for draw call counts (all cars have same count)
     const carGeometryCount = createCarModel().indices.length;
 
     // Texturas
@@ -348,11 +340,11 @@ function main() {
         lightDir1: gl.getUniformLocation(prog, "u_lightDirection1"),
         lightDir2: gl.getUniformLocation(prog, "u_lightDirection2"),
 
-        // [NEW] Cores das Luzes
+        // Cores das Luzes
         lightCol1: gl.getUniformLocation(prog, "u_lightColor1"),
         lightCol2: gl.getUniformLocation(prog, "u_lightColor2"),
         ambientCol: gl.getUniformLocation(prog, "u_ambientColor"),
-        viewWorldPos: gl.getUniformLocation(prog, "u_viewWorldPosition"), // [NEW]
+        viewWorldPos: gl.getUniformLocation(prog, "u_viewWorldPosition"),
 
         invTrans: gl.getUniformLocation(prog, "u_worldInverseTranspose"),
         isTextured: gl.getUniformLocation(prog, "u_isTextured"),
@@ -382,7 +374,7 @@ function main() {
         }
 
         if (tentouMover) {
-            // Check boundaries
+            // Checa limites
             if (proximoX < -10 || proximoX > 10) {
                 return;
             }
@@ -398,8 +390,6 @@ function main() {
                     obs.x === targetX && obs.z === targetZ && obs.type === 'lilypad'
                 );
                 if (!emCimaDaFolha) {
-                    // CORREÇÃO: Mudei de TRUE para FALSE.
-                    // Agora a água permite que o escudo salve.
                     setTimeout(() => morrer(false), 300);
                 }
             }
@@ -435,26 +425,21 @@ function main() {
     loopDoJogo = function () {
         if (!gameRunning) return;
 
-        // --- CYCLE UPDATE ---
         if (!isTimeFrozen) {
             gameTime += TIME_SPEED;
             if (gameTime > Math.PI * 2) gameTime -= Math.PI * 2;
         }
 
-        // Calculate Sun Position
-        // Rotate around East-West axis? Let's assume Sun crosses X axis (Leste-Oeste) or Z?
-        // Let's make Sun rise on X (Right) and set on -X (Left)?
-        // sunX = cos(gameTime), sunY = sin(gameTime).
+        // Calcula a posição do sol
         const sunX = Math.cos(gameTime);
-        const sunY = Math.sin(gameTime); // Height
+        const sunY = Math.sin(gameTime); // Altura
 
-        // Color Transitions
+        // Transição de cores
         let skyColor, sunColor, moonColor, ambColor;
 
-        // Simple Day/Night logic based on sunY
         if (sunY > 0) {
-            // DAY
-            // Interpolate colors based on sunY (0 to 1)
+            // Dia
+            // Interpoal baseado em sunY (0 to 1)
             let t = sunY;
             if (t < 0.2) {
                 // Sunrise/Sunset (Laranja/Rosado)
@@ -467,26 +452,24 @@ function main() {
                 sunColor = [1.0, 0.95, 0.9]; // Yellow/White
                 ambColor = [0.5, 0.5, 0.5];
             }
-            // Sun intensity
             sunColor = sunColor.map(c => c * t);
             moonColor = [0, 0, 0];
         } else {
-            // NIGHT
+            // Noite
             // Dark blue
             skyColor = [0.05, 0.05, 0.2];
             sunColor = [0, 0, 0];
-            moonColor = [0.2, 0.3, 0.6]; // Moon is blueish
+            moonColor = [0.2, 0.3, 0.6];
             ambColor = [0.1, 0.1, 0.2];
         }
 
         gl.clearColor(skyColor[0], skyColor[1], skyColor[2], 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-        // Set Light Uniforms
-        gl.uniform3fv(loc.lightDir1, [sunX, sunY, 0.2]); // Sun Pos
+        gl.uniform3fv(loc.lightDir1, [sunX, sunY, 0.2]);
         gl.uniform3fv(loc.lightCol1, sunColor);
 
-        gl.uniform3fv(loc.lightDir2, [-sunX, -sunY, 0.2]); // Moon Pos (Opposite)
+        gl.uniform3fv(loc.lightDir2, [-sunX, -sunY, 0.2]);
         gl.uniform3fv(loc.lightCol2, moonColor);
 
         gl.uniform3fv(loc.ambientCol, ambColor);
@@ -497,7 +480,7 @@ function main() {
             let sapoRealZ = currentZ * PASSO;
             if (troncoZ <= sapoRealZ + 2.0) {
                 console.log("ESMAGADO!");
-                // CORREÇÃO: Tronco sempre mata (instakill = true)
+                // Tronco sempre mata (instakill = true)
                 morrer(true);
                 return;
             }
@@ -530,7 +513,7 @@ function main() {
         gl.uniformMatrix4fv(loc.proj, false, proj);
         gl.uniformMatrix4fv(loc.view, false, view);
 
-        // [NEW] Passa a posição da câmera para cálculo especular
+        // Passa a posição da câmera para cálculo especular
         let camPos;
         if (cameraMode === 'froggy') {
             camPos = [rx, 20, rz + 20];
@@ -538,8 +521,6 @@ function main() {
             camPos = [rx + 13, 20, rz + 20];
         }
         gl.uniform3fv(loc.viewWorldPos, camPos);
-
-        // Previous light setup removed, using new cycle logic above
 
         useBuffers(gl, floorBuffers, prog);
 
@@ -693,8 +674,8 @@ function main() {
             }
         }
 
-        // [MODIFIED] Car rendering with Voxel Model - Multi Color
-        gl.uniform1i(gl.getUniformLocation(prog, "u_useVertexColor"), 1); // Enable vertex colors
+        // Carro renderizando com voxel
+        gl.uniform1i(gl.getUniformLocation(prog, "u_useVertexColor"), 1);
 
         for (const carro of carros) {
             if (Math.abs(carro.z - targetZ) > 40) continue;
@@ -711,9 +692,9 @@ function main() {
             let mCar = Matrix.translate(Matrix.identity(), carro.x * PASSO, 0.0, carro.z * PASSO);
 
             if (carro.speed > 0) {
-                mCar = Matrix.rotateY(mCar, Math.PI / 2); // Face Right
+                mCar = Matrix.rotateY(mCar, Math.PI / 2); // Olhar pra direita
             } else {
-                mCar = Matrix.rotateY(mCar, -Math.PI / 2); // Face Left
+                mCar = Matrix.rotateY(mCar, -Math.PI / 2); // Olhar pra esquerda
             }
 
             mCar = Matrix.scale(mCar, 0.8, 0.8, 0.8);
@@ -736,7 +717,4 @@ function main() {
     // Inicia o loop
     requestAnimationFrame(loopDoJogo);
 }
-
-// --- FUNÇÕES AUXILIARES DE WEBGL ---
-// WebGL Helpers moved to utils.js
 window.onload = main;
