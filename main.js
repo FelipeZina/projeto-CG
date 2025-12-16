@@ -1,12 +1,13 @@
+// --- SHADERS ---
 const vertexShaderSource = `
     attribute vec3 a_position;
     attribute vec3 a_normal;
     attribute vec2 a_texcoord; 
-    attribute vec3 a_color;    
+    attribute vec3 a_color;     // [NEW] Cor por vértice
     
     varying vec3 v_normal;
     varying vec2 v_texcoord; 
-    varying vec3 v_color;       
+    varying vec3 v_color;       // [NEW]
     
     uniform mat4 u_modelMatrix;
     uniform mat4 u_viewMatrix;
@@ -19,7 +20,7 @@ const vertexShaderSource = `
         
         v_normal = mat3(u_worldInverseTranspose) * a_normal;
         v_texcoord = a_texcoord; 
-        v_color = a_color;      
+        v_color = a_color;      // [NEW] Passa cor para o fragmento
     }
 `;
 
@@ -29,31 +30,40 @@ const fragmentShaderSource = `
     uniform vec3 u_color;          
     uniform sampler2D u_texture;   
     uniform bool u_isTextured;     
-    uniform bool u_useVertexColor; 
+    uniform bool u_useVertexColor; // [NEW] Flag para usar cor do vértice
     
+    uniform vec3 u_lightDirection1; 
+    uniform vec3 u_lightDirection2; 
+    
+    // [NEW] Uniforms para cores das luzes e ambiente
+    uniform vec3 u_lightColor1;
+    uniform vec3 u_lightColor2;
     uniform vec3 u_ambientColor;
-    uniform vec3 u_lightColor;
-    
-    uniform vec3 u_lightDirection; 
- 
+
     varying vec3 v_normal;
     varying vec2 v_texcoord;       
-    varying vec3 v_color;          
+    varying vec3 v_color;          // [NEW]
     
     void main() {
         vec3 normal = normalize(v_normal);
         
-        // Luz Direcional (Sol/Lua)
-        float lightIntensity = max(dot(normal, normalize(u_lightDirection)), 0.0);
+        // --- ILUMINAÇÃO ---
+        // Luz 1 (Sol)
+        float diff1 = max(dot(normal, normalize(u_lightDirection1)), 0.0);
         
-        // Combina: Cor do Objeto * (Ambiente + (LuzDir * CorLuz))
-        vec3 lighting = u_ambientColor + (u_lightColor * lightIntensity);
+        // Luz 2 (Lua / Contra-luz)
+        float diff2 = max(dot(normal, normalize(u_lightDirection2)), 0.0);
+        
+        // Combina ambiente + difusa 1 + difusa 2
+        vec3 lighting = u_ambientColor + (u_lightColor1 * diff1) + (u_lightColor2 * diff2);
 
+        // --- COR BASE ---
         vec4 baseColor;
         
         if (u_isTextured) {
             baseColor = texture2D(u_texture, v_texcoord);
         } else if (u_useVertexColor) {
+            // [NEW] Usa cor do vértice
             baseColor = vec4(v_color, 1.0);
         } else {
             baseColor = vec4(u_color, 1.0);
@@ -63,15 +73,16 @@ const fragmentShaderSource = `
     }
 `;
 
+// --- FUNÇÕES AUXILIARES E MATEMÁTICA ---
 function parseOBJ(text) {
     const positions = [];
     const normals = [];
-    const texcoords = [];
+    const texcoords = []; // Array para coordenadas UV
     const indices = [];
 
     const tempVertices = [];
     const tempNormals = [];
-    const tempTexCoords = [];
+    const tempTexCoords = []; // Armazena os vts do arquivo
 
     const lines = text.split('\n');
     for (let line of lines) {
@@ -86,11 +97,13 @@ function parseOBJ(text) {
         } else if (keyword === 'vn') {
             tempNormals.push(args.map(parseFloat));
         } else if (keyword === 'vt') {
+            // Lê coordenadas de textura (u, v)
             tempTexCoords.push(args.map(parseFloat));
         } else if (keyword === 'f') {
             const faceVerts = args.map(f => {
                 const parts = f.split('/');
                 const v = parseInt(parts[0]) - 1;
+                // O formato é v/vt/vn. O segundo elemento é a textura.
                 const t = parts.length > 1 && parts[1] ? parseInt(parts[1]) - 1 : undefined;
                 const n = parts.length > 2 && parts[2] ? parseInt(parts[2]) - 1 : undefined;
                 return { v, t, n };
@@ -99,12 +112,16 @@ function parseOBJ(text) {
             for (let i = 1; i < faceVerts.length - 1; i++) {
                 const tri = [faceVerts[0], faceVerts[i], faceVerts[i + 1]];
                 tri.forEach(({ v, t, n }) => {
+                    // Posição
                     positions.push(...tempVertices[v]);
+
+                    // Textura
                     if (t !== undefined && tempTexCoords[t]) {
                         texcoords.push(tempTexCoords[t][0], tempTexCoords[t][1]);
                     } else {
-                        texcoords.push(0, 0);
+                        texcoords.push(0, 0); // Placeholder se não tiver textura
                     }
+
                     const norm = n !== undefined ? tempNormals[n] : [0, 1, 0];
                     normals.push(...norm);
                     indices.push(indices.length);
@@ -169,6 +186,7 @@ function multiply(a, b) {
 }
 function lerp(start, end, t) { return start * (1 - t) + end * t; }
 
+// --- VARIÁVEIS GLOBAIS ---
 let sapoX = 0, sapoZ = 0;
 let targetX = 0, targetZ = 0;
 let currentX = 0, currentZ = 0;
@@ -189,6 +207,7 @@ let troncoZ = 15.0;
 let troncoSpeed = 0.04;
 let troncoActive = true;
 
+// POWER UPS
 let powerUps = [];
 let hasShield = false;
 let isTimeFrozen = false;
@@ -199,13 +218,11 @@ const PU_SHIELD = 0;
 const PU_SPEED = 1;
 const PU_TIME = 2;
 
+// DAY/NIGHT CYCLE
+let gameTime = 0; // 0 to 2*Math.PI
+const TIME_SPEED = 0.0005; // Ajuste para mais rápido ou devagar
 
 let texGrass, texRoad, texWater;
-
-// Day/Night Cycle Variables
-let gameTime = 12.0; // Start at Noon (0-24h)
-const DAY_DURATION = 30; // Seconds for a full day
-
 
 function gerarMapa() {
     obstaculos = [];
@@ -257,18 +274,20 @@ function gerarMapa() {
             let direction = (z % 2 === 0) ? 1 : -1;
             let speed = (0.05 + Math.random() * 0.05) * direction;
             let numCarros = 1 + Math.floor(Math.random() * 2);
-            let carrosNaFaixa = [];
+            let carrosNaFaixa = []; // [FIX] Array temporário para verificar sobreposição
 
             for (let k = 0; k < numCarros; k++) {
                 let startX;
                 let valid = false;
                 let attempts = 0;
 
+                // Tenta encontrar uma posição válida (sem sobreposição)
                 while (!valid && attempts < 10) {
                     startX = -15 + Math.random() * 30;
                     valid = true;
+                    // Verifica distância com outros carros recém criados nesta faixa
                     for (let otherX of carrosNaFaixa) {
-                        if (Math.abs(startX - otherX) < 8.0) {
+                        if (Math.abs(startX - otherX) < 8.0) { // Distância mínima aumentada para 8.0 para evitar clip
                             valid = false;
                             break;
                         }
@@ -282,7 +301,7 @@ function gerarMapa() {
                         x: startX,
                         z: z,
                         speed: speed,
-                        modelIndex: Math.floor(Math.random() * 6)
+                        modelIndex: Math.floor(Math.random() * 6) // [NEW] Random color index (0-5) matching carBuffersList
                     });
                 }
             }
@@ -309,6 +328,7 @@ function iniciarJogo(modo) {
     hasShield = false;
     isTimeFrozen = false;
     moveDuration = 150;
+    gameTime = 0; // Reinicia ciclo
 
     document.getElementById("score").innerText = 0;
 
@@ -323,17 +343,21 @@ function iniciarJogo(modo) {
 }
 
 let loopDoJogo;
+
 function mostrarMensagem(texto, cor) {
     const el = document.getElementById("powerUpMsg");
     if (!el) return;
     el.innerText = texto;
     el.style.color = cor;
 
+    // Efeito de aparecer
     el.style.opacity = 1;
-    el.style.transform = "translate(-50%, -50%) scale(1.2)";
+    el.style.transform = "translate(-50%, -50%) scale(1.2)"; // Aumenta um pouco (pop)
 
+    // Limpa timer anterior se houver
     if (msgTimeout) clearTimeout(msgTimeout);
 
+    // Some depois de 2 segundos
     msgTimeout = setTimeout(() => {
         el.style.opacity = 0;
         el.style.transform = "translate(-50%, -50%) scale(1.0)";
@@ -342,17 +366,24 @@ function mostrarMensagem(texto, cor) {
 function ativarPowerUp(tipo) {
     if (tipo === PU_SHIELD) {
         hasShield = true;
-        mostrarMensagem("🛡️ ESCUDO ATIVO!", "#00FFFF");
+        // console.log("ESCUDO ATIVO! Proteção contra 1 batida.");
+        mostrarMensagem("🛡️ ESCUDO ATIVO!", "#00FFFF"); // Ciano
     }
     else if (tipo === PU_SPEED) {
-        mostrarMensagem("⚡ VELOCIDADE MÁXIMA!", "#FFFF00");
+        // console.log("VELOCIDADE EXTRA! (8s)");
+        mostrarMensagem("⚡ VELOCIDADE MÁXIMA!", "#FFFF00"); // Amarelo
+
         moveDuration = 70;
         setTimeout(() => {
             moveDuration = 150;
+            // Opcional: Avisar que acabou
+            // mostrarMensagem("Velocidade Normal", "#FFFFFF");
         }, 8000);
     }
     else if (tipo === PU_TIME) {
-        mostrarMensagem("⏳ TEMPO CONGELADO!", "#FF00FF");
+        // console.log("TEMPO PARADO! (5s)");
+        mostrarMensagem("⏳ TEMPO CONGELADO!", "#FF00FF"); // Roxo/Rosa
+
         isTimeFrozen = true;
         setTimeout(() => {
             isTimeFrozen = false;
@@ -360,15 +391,20 @@ function ativarPowerUp(tipo) {
     }
 }
 
+// CORREÇÃO: Função morrer recebe 'instakill'
 function morrer(instakill) {
+    // Se tem escudo e NÃO é morte instantânea (Tronco)
     if (hasShield && !instakill) {
         console.log("ESCUDO SALVOU! Pulando pra frente.");
         hasShield = false;
+
+        // Empurrar um bloco "pra frente" (Z negativo é frente)
         targetZ -= 1;
         currentZ = targetZ;
-        return;
+        return; // O jogo CONTINUA
     }
 
+    // Se bateu no tronco (instakill=true) ou não tinha escudo
     gameRunning = false;
     document.getElementById("finalScore").innerText = score;
     document.getElementById("ui").style.display = "none";
@@ -384,11 +420,12 @@ function main() {
     canvas.width = 800; canvas.height = 600;
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.enable(gl.DEPTH_TEST);
-    gl.clearColor(0.53, 0.81, 0.98, 1.0);
+    // gl.clearColor(0.53, 0.81, 0.98, 1.0); // Movido para dentro do loop (ciclo dia/noite)
 
     const prog = createProgram(gl, vertexShaderSource, fragmentShaderSource);
     gl.useProgram(prog);
 
+    // Buffers
     const sapoData = parseOBJ(frogData);
     const sapoBuffers = createBuffers(gl, sapoData);
 
@@ -411,26 +448,30 @@ function main() {
     const heroLetrasData = parseOBJ(heroiLetras);
     const heroLetrasBuffers = createBuffers(gl, heroLetrasData);
 
+    // [MODIFIED] Using Voxel Lilypad Model
     const lilyDataObj = createLilypadModel();
     const lilyBuffers = createBuffers(gl, lilyDataObj);
 
+    // [MODIFIED] Multiple Voxel Car Models (Colors)
     const carColorsDefs = [
-        [0.8, 0.2, 0.2],
-        [0.2, 0.4, 0.8],
-        [0.9, 0.9, 0.1],
-        [0.1, 0.8, 0.2],
-        [0.8, 0.2, 0.8],
-        [0.9, 0.5, 0.1]
+        [0.8, 0.2, 0.2], // Red
+        [0.2, 0.4, 0.8], // Blue
+        [0.9, 0.9, 0.1], // Yellow
+        [0.1, 0.8, 0.2], // Green
+        [0.8, 0.2, 0.8], // Purple
+        [0.9, 0.5, 0.1]  // Orange
     ];
 
+    // Create a buffer for each color
     const carBuffersList = carColorsDefs.map(color => {
         const data = createCarModel(color[0], color[1], color[2]);
         return createBuffers(gl, data);
     });
 
-    const carGeometryCount = createCarModel(1, 1, 1).indices.length;
+    // Keep a reference to geometry for draw call counts (all cars have same count)
+    const carGeometryCount = createCarModel().indices.length;
 
-
+    // Texturas
     texGrass = loadTexture(gl, 'grass.jpg');
     texRoad = loadTexture(gl, 'road.jpg');
     texWater = loadTexture(gl, 'water.jpg');
@@ -438,11 +479,19 @@ function main() {
     const floorData = {
         positions: [-100, 0, 100, 100, 0, 100, -100, 0, -100, 100, 0, -100],
         normals: [0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0],
-        texcoords: [0, 0, 20, 0, 0, 1, 20, 1],
+
+        texcoords: [
+            0, 0,
+            20, 0,
+            0, 1,
+            20, 1
+        ],
+
         indices: [0, 1, 2, 2, 1, 3]
     };
     const floorBuffers = createBuffers(gl, floorData);
 
+    // Event Listeners
     document.getElementById("btnModeEasy").addEventListener("click", () => iniciarJogo('easy'));
     document.getElementById("btnModeNormal").addEventListener("click", () => iniciarJogo('normal'));
     document.getElementById("btnModeHard").addEventListener("click", () => iniciarJogo('hard'));
@@ -478,9 +527,13 @@ function main() {
         proj: gl.getUniformLocation(prog, "u_projectionMatrix"),
         color: gl.getUniformLocation(prog, "u_color"),
 
-        lightDir: gl.getUniformLocation(prog, "u_lightDirection"),
-        lightColor: gl.getUniformLocation(prog, "u_lightColor"),
-        ambientColor: gl.getUniformLocation(prog, "u_ambientColor"),
+        lightDir1: gl.getUniformLocation(prog, "u_lightDirection1"),
+        lightDir2: gl.getUniformLocation(prog, "u_lightDirection2"),
+
+        // [NEW] Cores das Luzes
+        lightCol1: gl.getUniformLocation(prog, "u_lightColor1"),
+        lightCol2: gl.getUniformLocation(prog, "u_lightColor2"),
+        ambientCol: gl.getUniformLocation(prog, "u_ambientColor"),
 
         invTrans: gl.getUniformLocation(prog, "u_worldInverseTranspose"),
         isTextured: gl.getUniformLocation(prog, "u_isTextured"),
@@ -510,6 +563,7 @@ function main() {
         }
 
         if (tentouMover) {
+            // Check boundaries
             if (proximoX < -10 || proximoX > 10) {
                 return;
             }
@@ -525,6 +579,8 @@ function main() {
                     obs.x === targetX && obs.z === targetZ && obs.type === 'lilypad'
                 );
                 if (!emCimaDaFolha) {
+                    // CORREÇÃO: Mudei de TRUE para FALSE.
+                    // Agora a água permite que o escudo salve.
                     setTimeout(() => morrer(false), 300);
                 }
             }
@@ -560,70 +616,105 @@ function main() {
     loopDoJogo = function () {
         if (!gameRunning) return;
 
-        // --- DAY / NIGHT CYCLE LOGIC ---
-        // Update Time
+        // --- CYCLE UPDATE ---
         if (!isTimeFrozen) {
-            gameTime += (1.0 / 60.0) * (24.0 / DAY_DURATION); // Advance time
+            gameTime += TIME_SPEED;
+            if (gameTime > Math.PI * 2) gameTime -= Math.PI * 2;
         }
-        if (gameTime >= 24.0) gameTime -= 24.0;
 
-        // Calculate Sun/Moon Position
-        // 12 = Noon (Sun top), 0 or 24 = Midnight
-        // Angle 0 at 6am, PI at 6pm?
-        // Let's map 6am (6.0) to 0, 18pm (18.0) to PI
-        let cycleAngle = ((gameTime - 6.0) / 12.0) * Math.PI;
+        // Calculate Sun Position
+        // Rotate around East-West axis? Let's assume Sun crosses X axis (Leste-Oeste) or Z?
+        // Let's make Sun rise on X (Right) and set on -X (Left)?
+        // sunX = cos(gameTime), sunY = sin(gameTime).
+        const sunX = Math.cos(gameTime);
+        const sunY = Math.sin(gameTime); // Height
 
-        let sunX = Math.cos(cycleAngle);
-        let sunY = Math.sin(cycleAngle);
-        // Z slight offset so it's not perfect overhead
-        let sunDir = [sunX, sunY, 0.2];
+        // Color Transitions
+        let skyColor, sunColor, moonColor, ambColor;
 
-        // Colors
-        let skyColor, lightColor, ambientColor;
-
-        if (gameTime >= 6.0 && gameTime < 18.0) {
-            // DAY TIME
-            sunDir = [sunX, sunY, 0.2]; // Sun above
-
-            // Interpolate colors for Sunrise/Sunset
-            if (gameTime < 8.0) { // Sunrise (6-8)
-                // Blue to White/Yellow
-                lightColor = [1.0, 0.9, 0.8];
-                ambientColor = [0.4, 0.4, 0.5];
-                skyColor = [0.6, 0.7, 0.9]; // Morning Sky
-            } else if (gameTime > 16.0) { // Sunset (16-18)
-                lightColor = [1.0, 0.6, 0.3]; // Orange
-                ambientColor = [0.5, 0.4, 0.4];
-                skyColor = [0.8, 0.5, 0.4]; // Sunset Sky
-            } else { // Noon (8-16)
-                lightColor = [1.0, 1.0, 0.9]; // Bright White
-                ambientColor = [0.6, 0.6, 0.6];
-                skyColor = [0.53, 0.81, 0.98]; // Clear Blue
+        // Simple Day/Night logic based on sunY
+        if (sunY > 0) {
+            // DAY
+            // Interpolate colors based on sunY (0 to 1)
+            let t = sunY;
+            if (t < 0.2) {
+                // Sunrise/Sunset (Laranja/Rosado)
+                skyColor = [0.8, 0.5, 0.4];
+                sunColor = [1.0, 0.6, 0.2]; // Laranja
+                ambColor = [0.3, 0.3, 0.3];
+            } else {
+                // Mid-Day (Blue)
+                skyColor = [0.53, 0.81, 0.98];
+                sunColor = [1.0, 0.95, 0.9]; // Yellow/White
+                ambColor = [0.5, 0.5, 0.5];
             }
+            // Sun intensity
+            sunColor = sunColor.map(c => c * t);
+            moonColor = [0, 0, 0];
         } else {
-            // NIGHT TIME
-            // Moon opposite to Sun
-            sunDir = [-sunX, -sunY, 0.2];
-
-            lightColor = [0.2, 0.2, 0.5]; // Blueish Moon Light
-            ambientColor = [0.1, 0.1, 0.2]; // Dark Ambient
-            skyColor = [0.05, 0.05, 0.2]; // Dark Blue Sky
+            // NIGHT
+            // Dark blue
+            skyColor = [0.05, 0.05, 0.2];
+            sunColor = [0, 0, 0];
+            moonColor = [0.2, 0.3, 0.6]; // Moon is blueish
+            ambColor = [0.1, 0.1, 0.2];
         }
 
-        // Update Uniforms
         gl.clearColor(skyColor[0], skyColor[1], skyColor[2], 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-        gl.uniform3fv(loc.lightDir, sunDir);
-        gl.uniform3fv(loc.lightColor, lightColor);
-        gl.uniform3fv(loc.ambientColor, ambientColor);
+        // Set Light Uniforms
+        gl.uniform3fv(loc.lightDir1, [sunX, sunY, 0.2]); // Sun Pos
+        gl.uniform3fv(loc.lightCol1, sunColor);
 
-        // Debug info on screen (optional, maybe in UI?)
-        // document.getElementById("score").innerText = \`Score: \${score} - Time: \${Math.floor(gameTime)}h\`;
+        gl.uniform3fv(loc.lightDir2, [-sunX, -sunY, 0.2]); // Moon Pos (Opposite)
+        gl.uniform3fv(loc.lightCol2, moonColor);
 
+        gl.uniform3fv(loc.ambientCol, ambColor);
+
+
+        if (troncoActive && !isTimeFrozen) {
+            troncoZ -= troncoSpeed;
+            let sapoRealZ = currentZ * PASSO;
+            if (troncoZ <= sapoRealZ + 2.0) {
+                console.log("ESMAGADO!");
+                // CORREÇÃO: Tronco sempre mata (instakill = true)
+                morrer(true);
+                return;
+            }
+        }
+
+        let jumpY = 0;
+        if (isMoving) {
+            let t = (Date.now() - moveStartTime) / moveDuration;
+            if (t >= 1.0) { t = 1.0; isMoving = false; currentX = targetX; currentZ = targetZ; currentAngle = targetAngle; }
+            else {
+                currentX = lerp(startX, targetX, t);
+                currentZ = lerp(startZ, targetZ, t);
+                currentAngle = lerp(startAngle, targetAngle, t);
+                jumpY = Math.sin(t * Math.PI) * 1.5;
+            }
+        }
+
+        const rx = currentX * PASSO;
+        const rz = currentZ * PASSO;
+
+        const proj = Matrix.perspective(50 * Math.PI / 180, canvas.width / canvas.height, 0.1, 500);
+
+        let view;
+        if (cameraMode === 'froggy') {
+            view = Matrix.lookAt([rx, 20, rz + 20], [rx, 2, rz], [0, 1, 0]);
+        } else {
+            view = Matrix.lookAt([rx + 13, 20, rz + 20], [rx, 0, rz], [0, 1, 0]);
+        }
+        gl.uniformMatrix4fv(loc.proj, false, proj);
+        gl.uniformMatrix4fv(loc.view, false, view);
+
+        // Previous light setup removed, using new cycle logic above
 
         useBuffers(gl, floorBuffers, prog);
 
+        // Ativa o uso de texturas no shader
         gl.uniform1i(loc.isTextured, 1);
         gl.activeTexture(gl.TEXTURE0);
         gl.uniform1i(loc.texture, 0);
@@ -773,7 +864,8 @@ function main() {
             }
         }
 
-        gl.uniform1i(gl.getUniformLocation(prog, "u_useVertexColor"), 1);
+        // [MODIFIED] Car rendering with Voxel Model - Multi Color
+        gl.uniform1i(gl.getUniformLocation(prog, "u_useVertexColor"), 1); // Enable vertex colors
 
         for (const carro of carros) {
             if (Math.abs(carro.z - targetZ) > 40) continue;
@@ -790,9 +882,9 @@ function main() {
             let mCar = Matrix.translate(Matrix.identity(), carro.x * PASSO, 0.0, carro.z * PASSO);
 
             if (carro.speed > 0) {
-                mCar = Matrix.rotateY(mCar, Math.PI / 2);
+                mCar = Matrix.rotateY(mCar, Math.PI / 2); // Face Right
             } else {
-                mCar = Matrix.rotateY(mCar, -Math.PI / 2);
+                mCar = Matrix.rotateY(mCar, -Math.PI / 2); // Face Left
             }
 
             mCar = Matrix.scale(mCar, 0.8, 0.8, 0.8);
@@ -812,9 +904,11 @@ function main() {
         requestAnimationFrame(loopDoJogo);
     }
 
+    // Inicia o loop
     requestAnimationFrame(loopDoJogo);
 }
 
+// --- FUNÇÕES AUXILIARES DE WEBGL ---
 function createShader(gl, type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; }
 function createProgram(gl, vs, fs) { const p = gl.createProgram(); gl.attachShader(p, createShader(gl, gl.VERTEX_SHADER, vs)); gl.attachShader(p, createShader(gl, gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p); return p; }
 function createBuffers(gl, data) {
@@ -837,6 +931,7 @@ function createBuffers(gl, data) {
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, i);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(data.indices), gl.STATIC_DRAW);
 
+    // [NEW] Buffer de Cores
     let c = null;
     if (data.colors && data.colors.length > 0) {
         c = gl.createBuffer();
@@ -867,6 +962,7 @@ function useBuffers(gl, buf, prog) {
         gl.disableVertexAttribArray(tex);
     }
 
+    // [NEW] Bind Cor
     const col = gl.getAttribLocation(prog, "a_color");
     if (buf.c && col !== -1) {
         gl.bindBuffer(gl.ARRAY_BUFFER, buf.c);
@@ -874,7 +970,7 @@ function useBuffers(gl, buf, prog) {
         gl.enableVertexAttribArray(col);
     } else if (col !== -1) {
         gl.disableVertexAttribArray(col);
-        gl.vertexAttrib3f(col, 1.0, 1.0, 1.0);
+        gl.vertexAttrib3f(col, 1.0, 1.0, 1.0); // Cor padrão se não tiver atributo
     }
 
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buf.i);
