@@ -71,17 +71,15 @@ function addCube(data, x, y, z, r, g, b, sx = 1, sy = 1, sz = 1) {
     }
 }
 
-function createCarModel() {
+function createCarModel(r = 0.2, g = 0.4, b = 0.8) {
     const data = { positions: [], normals: [], colors: [], indices: [], texcoords: [] };
 
-    // Corpo Verde/Azul (dependendo do gosto, vamos fazer um azul estilo arcade)
-    // x, y, z, r, g, b, sx, sy, sz
+    // Corpo (Cor customizável)
+    // Base do carro (Chassi)
+    addCube(data, 0, 0.4, 0, r, g, b, 1.8, 0.5, 3.0);
 
-    // Base do carro (Chassi) - Azul
-    addCube(data, 0, 0.4, 0, 0.2, 0.4, 0.8, 1.8, 0.5, 3.0);
-
-    // Parte de cima (Cabine) - Azul um pouco mais claro ou igual
-    addCube(data, 0, 1.0, -0.2, 0.2, 0.4, 0.8, 1.6, 0.7, 1.5);
+    // Parte de cima (Cabine) - Um pouco mais clara? Ou a mesma cor. Vamos usar a mesma.
+    addCube(data, 0, 1.0, -0.2, r, g, b, 1.6, 0.7, 1.5);
 
     // Vidro Parabrisa (Preto/Cinza escuro)
     addCube(data, 0, 1.0, 0.6, 0.2, 0.2, 0.3, 1.4, 0.5, 0.1);
@@ -107,6 +105,7 @@ function createCarModel() {
     addCube(data, wheelX, wheelY, -wheelZ, 0.1, 0.1, 0.1, 0.4, 0.5, 0.6);
 
     // Faróis (Amarelos)
+    addCube(data, -0.6, 0.45, 1.51, 1.0, 1.0, 0.0, 0.3, 0.2, 0.1);
     addCube(data, 0.6, 0.45, 1.51, 1.0, 1.0, 0.0, 0.3, 0.2, 0.1);
 
     return data;

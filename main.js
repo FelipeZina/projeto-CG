@@ -198,10 +198,10 @@ let troncoSpeed = 0.04;
 let troncoActive = true;
 
 // POWER UPS
-let powerUps = [];           
-let hasShield = false;       
-let isTimeFrozen = false;    
-let moveDuration = 150;      
+let powerUps = [];
+let hasShield = false;
+let isTimeFrozen = false;
+let moveDuration = 150;
 
 const PU_SHIELD = 0;
 const PU_SPEED = 1;
@@ -212,8 +212,8 @@ function gerarMapa() {
     moedas = [];
     carros = [];
     mapRows = {};
-    powerUps = []; 
-    
+    powerUps = [];
+
     for (let z = -300; z <= 20; z++) {
         let tipoLinha = 'grass';
 
@@ -238,7 +238,7 @@ function gerarMapa() {
                     let randItem = Math.random();
                     if (randItem < 0.1) {
                         moedas.push({ x: x, z: z, active: true });
-                    } 
+                    }
                     else if (randItem > 0.98) {
                         let tipoPower = Math.floor(Math.random() * 3);
                         powerUps.push({ x: x, z: z, active: true, type: tipoPower });
@@ -284,8 +284,7 @@ function gerarMapa() {
                         x: startX,
                         z: z,
                         speed: speed,
-                        // color: [Math.random(), Math.random(), Math.random()] // Not used with current voxel model but kept structure
-                        color: [0, 0, 0] // Placeholder
+                        modelIndex: Math.floor(Math.random() * 6) // [NEW] Random color index (0-5) matching carBuffersList
                     });
                 }
             }
@@ -331,15 +330,15 @@ function ativarPowerUp(tipo) {
     if (tipo === PU_SHIELD) {
         hasShield = true;
         console.log("ESCUDO ATIVO! Proteção contra 1 batida.");
-    } 
+    }
     else if (tipo === PU_SPEED) {
         console.log("VELOCIDADE EXTRA! (8s)");
-        moveDuration = 70; 
+        moveDuration = 70;
         setTimeout(() => {
-            moveDuration = 150; 
+            moveDuration = 150;
             console.log("Velocidade normal.");
         }, 8000);
-    } 
+    }
     else if (tipo === PU_TIME) {
         console.log("TEMPO PARADO! (5s)");
         isTimeFrozen = true;
@@ -355,10 +354,10 @@ function morrer(instakill) {
     // Se tem escudo e NÃO é morte instantânea (Tronco)
     if (hasShield && !instakill) {
         console.log("ESCUDO SALVOU! Pulando pra frente.");
-        hasShield = false; 
-        
+        hasShield = false;
+
         // Empurrar um bloco "pra frente" (Z negativo é frente)
-        targetZ -= 1; 
+        targetZ -= 1;
         currentZ = targetZ;
         return; // O jogo CONTINUA
     }
@@ -387,8 +386,8 @@ function main() {
     // Buffers
     const sapoData = parseOBJ(frogData);
     const sapoBuffers = createBuffers(gl, sapoData);
-    
-    const powerUpData = parseOBJ(powerup); 
+
+    const powerUpData = parseOBJ(powerup);
     const powerUpBuffers = createBuffers(gl, powerUpData);
 
     const troncoData = parseOBJ(arvoreTronco);
@@ -411,9 +410,24 @@ function main() {
     const lilyDataObj = createLilypadModel();
     const lilyBuffers = createBuffers(gl, lilyDataObj);
 
-    // [MODIFIED] Using Voxel Car Model
-    const carDataObj = createCarModel();
-    const carBuffers = createBuffers(gl, carDataObj);
+    // [MODIFIED] Multiple Voxel Car Models (Colors)
+    const carColorsDefs = [
+        [0.8, 0.2, 0.2], // Red
+        [0.2, 0.4, 0.8], // Blue
+        [0.9, 0.9, 0.1], // Yellow
+        [0.1, 0.8, 0.2], // Green
+        [0.8, 0.2, 0.8], // Purple
+        [0.9, 0.5, 0.1]  // Orange
+    ];
+
+    // Create a buffer for each color
+    const carBuffersList = carColorsDefs.map(color => {
+        const data = createCarModel(color[0], color[1], color[2]);
+        return createBuffers(gl, data);
+    });
+
+    // Keep a reference to geometry for draw call counts (all cars have same count)
+    const carGeometryCount = createCarModel().indices.length;
 
     // Texturas
     const texGrass = loadTexture(gl, 'grass.jpg');
@@ -514,7 +528,7 @@ function main() {
                 if (!emCimaDaFolha) {
                     // CORREÇÃO: Mudei de TRUE para FALSE.
                     // Agora a água permite que o escudo salve.
-                    setTimeout(() => morrer(false), 300); 
+                    setTimeout(() => morrer(false), 300);
                 }
             }
 
@@ -527,12 +541,12 @@ function main() {
                     document.getElementById("charBtn").style.display = "block";
                 }
             }
-            
+
             const puIndex = powerUps.findIndex(p => p.x === targetX && p.z === targetZ && p.active);
             if (puIndex !== -1) {
                 let pu = powerUps[puIndex];
-                pu.active = false; 
-                ativarPowerUp(pu.type); 
+                pu.active = false;
+                ativarPowerUp(pu.type);
             }
 
             isMoving = true;
@@ -551,20 +565,20 @@ function main() {
 
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-        if (troncoActive && !isTimeFrozen) { 
-            troncoZ -= troncoSpeed; 
+        if (troncoActive && !isTimeFrozen) {
+            troncoZ -= troncoSpeed;
             let sapoRealZ = currentZ * PASSO;
             if (troncoZ <= sapoRealZ + 2.0) {
-                    console.log("ESMAGADO!");
-                    // CORREÇÃO: Tronco sempre mata (instakill = true)
-                    morrer(true);
-                    return; 
+                console.log("ESMAGADO!");
+                // CORREÇÃO: Tronco sempre mata (instakill = true)
+                morrer(true);
+                return;
             }
         }
 
         let jumpY = 0;
         if (isMoving) {
-            let t = (Date.now() - moveStartTime) / moveDuration; 
+            let t = (Date.now() - moveStartTime) / moveDuration;
             if (t >= 1.0) { t = 1.0; isMoving = false; currentX = targetX; currentZ = targetZ; currentAngle = targetAngle; }
             else {
                 currentX = lerp(startX, targetX, t);
@@ -594,8 +608,8 @@ function main() {
 
         // Ativa o uso de texturas no shader
         gl.uniform1i(loc.isTextured, 1);
-        gl.activeTexture(gl.TEXTURE0); 
-        gl.uniform1i(loc.texture, 0);  
+        gl.activeTexture(gl.TEXTURE0);
+        gl.uniform1i(loc.texture, 0);
 
         for (let z = Math.floor(targetZ) - 60; z <= Math.floor(targetZ) + 10; z++) {
             let tipo = mapRows[z] || 'grass';
@@ -616,18 +630,18 @@ function main() {
 
         gl.uniform1i(loc.isTextured, 0);
 
-        useBuffers(gl, powerUpBuffers, prog); 
-        gl.uniform3fv(loc.color, [1.0, 0.0, 0.0]); 
+        useBuffers(gl, powerUpBuffers, prog);
+        gl.uniform3fv(loc.color, [1.0, 0.0, 0.0]);
 
-        let anguloPU = Date.now() / 500; 
+        let anguloPU = Date.now() / 500;
 
         for (const p of powerUps) {
-            if (Math.abs(p.z - targetZ) > 40) continue; 
+            if (Math.abs(p.z - targetZ) > 40) continue;
             if (p.active) {
                 let mPu = Matrix.translate(Matrix.identity(), p.x * PASSO, 0.8, p.z * PASSO);
                 mPu = Matrix.rotateY(mPu, anguloPU);
-                mPu = Matrix.rotateX(mPu, anguloPU); 
-                mPu = Matrix.scale(mPu, 0.8, 0.8, 0.8); 
+                mPu = Matrix.rotateX(mPu, anguloPU);
+                mPu = Matrix.scale(mPu, 0.8, 0.8, 0.8);
                 gl.uniformMatrix4fv(loc.model, false, mPu);
                 gl.uniformMatrix4fv(loc.invTrans, false, mPu);
                 gl.drawElements(gl.TRIANGLES, powerUpData.indices.length, gl.UNSIGNED_SHORT, 0);
@@ -652,10 +666,10 @@ function main() {
 
         if (currentCharacter === 'sapo') {
             useBuffers(gl, sapoBuffers, prog);
-            if (hasShield) gl.uniform3fv(loc.color, [0.8, 0.8, 1.0]); 
-            else gl.uniform3fv(loc.color, [0.2, 0.8, 0.2]); 
+            if (hasShield) gl.uniform3fv(loc.color, [0.8, 0.8, 1.0]);
+            else gl.uniform3fv(loc.color, [0.2, 0.8, 0.2]);
 
-            let mSapo = Matrix.scale(mChar,5.0, 5.0, 5.0);
+            let mSapo = Matrix.scale(mChar, 5.0, 5.0, 5.0);
             gl.uniformMatrix4fv(loc.model, false, mSapo);
             gl.uniformMatrix4fv(loc.invTrans, false, mSapo);
             gl.drawElements(gl.TRIANGLES, sapoData.indices.length, gl.UNSIGNED_SHORT, 0);
@@ -666,8 +680,8 @@ function main() {
             gl.uniformMatrix4fv(loc.model, false, mBase);
             gl.uniformMatrix4fv(loc.invTrans, false, mBase);
             useBuffers(gl, heroBaseBuffers, prog);
-            
-            if (hasShield) gl.uniform3fv(loc.color, [0.8, 0.8, 1.0]); 
+
+            if (hasShield) gl.uniform3fv(loc.color, [0.8, 0.8, 1.0]);
             else gl.uniform3fv(loc.color, [0.13, 0.75, 0.13]);
 
             gl.drawElements(gl.TRIANGLES, heroBaseData.indices.length, gl.UNSIGNED_SHORT, 0);
@@ -742,18 +756,22 @@ function main() {
             }
         }
 
-        // [MODIFIED] Car rendering with Voxel Model
-        useBuffers(gl, carBuffers, prog);
+        // [MODIFIED] Car rendering with Voxel Model - Multi Color
         gl.uniform1i(gl.getUniformLocation(prog, "u_useVertexColor"), 1); // Enable vertex colors
 
         for (const carro of carros) {
             if (Math.abs(carro.z - targetZ) > 40) continue;
-            
+
             if (!isTimeFrozen) {
                 carro.x += carro.speed;
                 if (carro.x > 20) carro.x = -20;
                 if (carro.x < -20) carro.x = 20;
             }
+
+            // Use the specific buffer for this car's color
+            // Note: switching buffers inside loop is not optimal for performance but fine for this low poly count
+            const bufferToUse = carBuffersList[carro.modelIndex || 0];
+            useBuffers(gl, bufferToUse, prog);
 
             // We don't use uniform color for car anymore, but we can keep it as fallback
             // gl.uniform3fv(loc.color, carro.color); 
@@ -771,14 +789,15 @@ function main() {
             mCar = Matrix.scale(mCar, 0.8, 0.8, 0.8);
             gl.uniformMatrix4fv(loc.model, false, mCar);
             gl.uniformMatrix4fv(loc.invTrans, false, mCar);
-            gl.drawElements(gl.TRIANGLES, carDataObj.indices.length, gl.UNSIGNED_SHORT, 0);
+            // We need the index count. Since all cars have same geometry count (just diff colors), we can use any
+            gl.drawElements(gl.TRIANGLES, carGeometryCount, gl.UNSIGNED_SHORT, 0);
 
-            if (Math.abs(carro.z - targetZ) < 0.3) { 
-                if (Math.abs(carro.x - currentX) < 1.2) { 
+            if (Math.abs(carro.z - targetZ) < 0.3) {
+                if (Math.abs(carro.x - currentX) < 1.2) {
                     // CORREÇÃO: false = não é instakill (permite escudo)
-                    morrer(false);   
+                    morrer(false);
                     // Se o jogo acabou, retorna. Se o escudo salvou, continua.
-                    if (!gameRunning) return; 
+                    if (!gameRunning) return;
                 }
             }
         }
@@ -786,7 +805,7 @@ function main() {
 
         requestAnimationFrame(loopDoJogo);
     }
-    
+
     // Inicia o loop
     requestAnimationFrame(loopDoJogo);
 }
@@ -876,10 +895,10 @@ function loadTexture(gl, url) {
         pixel);
 
     const image = new Image();
-    image.onload = function() {
+    image.onload = function () {
         gl.bindTexture(gl.TEXTURE_2D, texture);
         gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
-                      srcFormat, srcType, image);
+            srcFormat, srcType, image);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
