@@ -74,97 +74,112 @@
             display: none;
         }
 
-#startMenu {
-    width: 700px; /* Mais largo */
-    max-width: 90%;
-    padding: 20px;
-    display: flex; /* Habilita colunas */
-    flex-direction: row; /* Coloca um do lado do outro */
-    align-items: flex-start;
-    gap: 20px; /* Espaço entre as colunas */
-}
+        #startMenu {
+            width: 700px;
+            /* Mais largo */
+            max-width: 90%;
+            padding: 20px;
+            display: flex;
+            /* Habilita colunas */
+            flex-direction: row;
+            /* Coloca um do lado do outro */
+            align-items: flex-start;
+            gap: 20px;
+            /* Espaço entre as colunas */
+        }
 
-/* Coluna da Esquerda (Botões) */
-.menu-left {
-    flex: 1;
-    border-right: 2px solid rgba(255, 255, 255, 0.3); /* Linha divisória */
-    padding-right: 20px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-}
+        /* Coluna da Esquerda (Botões) */
+        .menu-left {
+            flex: 1;
+            border-right: 2px solid rgba(255, 255, 255, 0.3);
+            /* Linha divisória */
+            padding-right: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
 
-/* Coluna da Direita (Guia/Info) */
-.menu-right {
-    flex: 1.2; /* Um pouco mais largo que os botões */
-    text-align: left;
-    font-size: 15px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    padding-top: 10px;
-}
+        /* Coluna da Direita (Guia/Info) */
+        .menu-right {
+            flex: 1.2;
+            /* Um pouco mais largo que os botões */
+            text-align: left;
+            font-size: 15px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding-top: 10px;
+        }
 
-.guide-item {
-    background-color: rgba(255, 255, 255, 0.1);
-    border-radius: 10px;
-    padding: 10px;
-    margin-bottom: 15px;
-    display: flex;
-    align-items: center;
-    gap: 15px;
-}
+        .guide-item {
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 10px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
 
-.guide-text {
-    flex: 1;
-    line-height: 1.4;
-    font-size: 14px;
-    color: #eee;
-}
+        .guide-text {
+            flex: 1;
+            line-height: 1.4;
+            font-size: 14px;
+            color: #eee;
+        }
 
-.guide-title {
-    margin-top: 0;
-    color: #FFD700;
-    text-align: center;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
+        .guide-title {
+            margin-top: 0;
+            color: #FFD700;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
 
-/* --- ÍCONES CSS (Para não precisar de imagens externas) --- */
+        /* --- ÍCONES CSS (Para não precisar de imagens externas) --- */
 
-/* Moeda Amarela */
-.icon-coin {
-    width: 40px;
-    height: 40px;
-    background: radial-gradient(circle, #ffd700 30%, #ff9900 90%);
-    border-radius: 50%;
-    border: 2px solid #fff;
-    box-shadow: 0 0 10px #ffd700;
-    animation: spinCoin 3s infinite linear;
-    flex-shrink: 0;
-}
+        /* Moeda Amarela */
+        .icon-coin {
+            width: 40px;
+            height: 40px;
+            background: radial-gradient(circle, #ffd700 30%, #ff9900 90%);
+            border-radius: 50%;
+            border: 2px solid #fff;
+            box-shadow: 0 0 10px #ffd700;
+            animation: spinCoin 3s infinite linear;
+            flex-shrink: 0;
+        }
 
-/* Cubo PowerUp (Vermelho) */
-/* PowerUp Vermelho (Estilo Moeda) */
-.icon-powerup {
-    width: 40px; /* Mesmo tamanho da moeda */
-    height: 40px;
-    /* Gradiente vermelho para parecer uma esfera */
-    background: radial-gradient(circle, #ff4444 30%, #cc0000 90%);
-    border-radius: 50%; /* Deixa redondo */
-    border: 2px solid #fff;
-    box-shadow: 0 0 10px #ff0000; /* Brilho vermelho */
-    /* Usa a MESMA animação de giro da moeda */
-    animation: spinCoin 3s infinite linear;
-    flex-shrink: 0;
-}
-/* PODE APAGAR O @keyframes pulseCube, não vamos mais usar */
+        /* Cubo PowerUp (Vermelho) */
+        /* PowerUp Vermelho (Estilo Moeda) */
+        .icon-powerup {
+            width: 40px;
+            /* Mesmo tamanho da moeda */
+            height: 40px;
+            /* Gradiente vermelho para parecer uma esfera */
+            background: radial-gradient(circle, #ff4444 30%, #cc0000 90%);
+            border-radius: 50%;
+            /* Deixa redondo */
+            border: 2px solid #fff;
+            box-shadow: 0 0 10px #ff0000;
+            /* Brilho vermelho */
+            /* Usa a MESMA animação de giro da moeda */
+            animation: spinCoin 3s infinite linear;
+            flex-shrink: 0;
+        }
 
-/* Animações dos ícones */
-@keyframes spinCoin {
-    0% { transform: rotateY(0deg); }
-    100% { transform: rotateY(360deg); }
-}
+        /* PODE APAGAR O @keyframes pulseCube, não vamos mais usar */
+
+        /* Animações dos ícones */
+        @keyframes spinCoin {
+            0% {
+                transform: rotateY(0deg);
+            }
+
+            100% {
+                transform: rotateY(360deg);
+            }
+        }
 
 
         button {
@@ -248,74 +263,74 @@
             Use as teclas W, A, S, D ou setas para mover
         </div>
 
-<div id="startMenu" class="overlay-screen">
-    <div class="menu-left">
-        <h2 style="margin-top: 0;">MENU PRINCIPAL</h2>
+        <div id="startMenu" class="overlay-screen">
+            <div class="menu-left">
+                <h2 style="margin-top: 0;">MENU PRINCIPAL</h2>
 
-        <p style="margin: 10px 0; font-size: 14px;">Câmera:</p>
-        <button id="btnCameraToggle" style="background-color: #2196F3; margin-top: 5px;">Froggy 🐸</button>
+                <p style="margin: 10px 0; font-size: 14px;">Câmera:</p>
+                <button id="btnCameraToggle" style="background-color: #2196F3; margin-top: 5px;">Froggy 🐸</button>
 
-        <p style="margin: 15px 0 5px 0; font-size: 14px;">Dificuldade:</p>
-        <button id="btnModeEasy">Sem Tronco (Fácil)</button>
-        <button id="btnModeNormal">Normal</button>
-        <button id="btnModeHard">Difícil 💀</button>
-    </div>
+                <p style="margin: 15px 0 5px 0; font-size: 14px;">Dificuldade:</p>
+                <button id="btnModeEasy">Sem Tronco (Fácil)</button>
+                <button id="btnModeNormal">Normal</button>
+                <button id="btnModeHard">Difícil 💀</button>
+            </div>
 
-    <div class="menu-right">
-        <h3 class="guide-title">Guia do Jogo</h3>
-        <div class="guide-item">
-            <div class="icon-coin"></div>
-            <div class="guide-text">
-                <strong>Colete Moedas!</strong><br>
-                Faça 20 pontos para desbloquear o Herói.
+            <div class="menu-right">
+                <h3 class="guide-title">Guia do Jogo</h3>
+                <div class="guide-item">
+                    <div class="icon-coin"></div>
+                    <div class="guide-text">
+                        <strong>Colete Moedas!</strong><br>
+                        Faça 20 pontos para desbloquear o Herói.
+                    </div>
+                </div>
+                <div class="guide-item">
+                    <div class="icon-powerup"></div>
+                    <div class="guide-text">
+                        <strong>Power-Ups (Vermelhos)</strong><br>
+                        Pegue para ganhar Escudo 🛡️, Super Pulo ⚡ ou Parar o Tempo ⏱️.
+                    </div>
+                </div>
+                <p style="text-align: center; font-size: 12px; margin-top: auto; opacity: 0.7;">
+                    Mover: W, A, S, D
+                </p>
             </div>
         </div>
-        <div class="guide-item">
-            <div class="icon-powerup"></div>
-            <div class="guide-text">
-                <strong>Power-Ups (Vermelhos)</strong><br>
-                Pegue para ganhar Escudo 🛡️, Super Pulo ⚡ ou Parar o Tempo ⏱️.
-            </div>
-        </div>
-        <p style="text-align: center; font-size: 12px; margin-top: auto; opacity: 0.7;">
-            Mover: W, A, S, D
-        </p>
-    </div>
-</div>
 
-<div id="gameOver" class="overlay-screen" style="display: none;">
-    <div class="menu-left" style="justify-content: center;">
-        <h2 style="color: #ff4444; margin-top: 0;">FIM DE JOGO!</h2>
-        
-        <p style="font-size: 18px; margin: 20px 0;">
-            Sua Pontuação:<br>
-            <span id="finalScore" style="font-size: 40px; color: #FFD700; font-weight: bold;">0</span>
-        </p>
-        
-        <button id="restartButton" style="background-color: #2196F3; margin-top: 20px;">Voltar ao Menu</button>
-    </div>
+        <div id="gameOver" class="overlay-screen" style="display: none;">
+            <div class="menu-left" style="justify-content: center;">
+                <h2 style="color: #ff4444; margin-top: 0;">FIM DE JOGO!</h2>
 
-    <div class="menu-right">
-        <h3 class="guide-title">Dicas</h3>
-        <div class="guide-item">
-            <div class="icon-coin"></div>
-            <div class="guide-text">
-                <strong>Não desista!</strong><br>
-                Tente coletar mais moedas na próxima vez.
+                <p style="font-size: 18px; margin: 20px 0;">
+                    Sua Pontuação:<br>
+                    <span id="finalScore" style="font-size: 40px; color: #FFD700; font-weight: bold;">0</span>
+                </p>
+
+                <button id="restartButton" style="background-color: #2196F3; margin-top: 20px;">Voltar ao Menu</button>
+            </div>
+
+            <div class="menu-right">
+                <h3 class="guide-title">Dicas</h3>
+                <div class="guide-item">
+                    <div class="icon-coin"></div>
+                    <div class="guide-text">
+                        <strong>Não desista!</strong><br>
+                        Tente coletar mais moedas na próxima vez.
+                    </div>
+                </div>
+                <div class="guide-item">
+                    <div class="icon-powerup"></div>
+                    <div class="guide-text">
+                        <strong>Use os Poderes</strong><br>
+                        O Escudo protege de uma batida de carro!
+                    </div>
+                </div>
+                <p style="text-align: center; font-size: 12px; margin-top: auto; opacity: 0.7;">
+                    Mover: W, A, S, D
+                </p>
             </div>
         </div>
-        <div class="guide-item">
-            <div class="icon-powerup"></div>
-            <div class="guide-text">
-                <strong>Use os Poderes</strong><br>
-                O Escudo protege de uma batida de carro!
-            </div>
-        </div>
-        <p style="text-align: center; font-size: 12px; margin-top: auto; opacity: 0.7;">
-            Mover: W, A, S, D
-        </p>
-    </div>
-</div>
 
         <div id="gameOver" class="overlay-screen">
             <h2 style="color: #ff4444;">Fim de Jogo!</h2>
@@ -326,7 +341,7 @@
 
     <script src="objeto.js"></script>
     <script src="voxelModels.js"></script>
-    <script src="m4.js"></script>
+
     <script src="main.js"></script>
 
 </body>
