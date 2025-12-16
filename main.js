@@ -30,14 +30,14 @@ const fragmentShaderSource = `
     uniform vec3 u_color;          
     uniform sampler2D u_texture;   
     uniform bool u_isTextured;     
-    uniform bool u_useVertexColor; // [NEW] Flag para usar cor do vértice
+    uniform bool u_useVertexColor; 
     
     uniform vec3 u_lightDirection1; 
     uniform vec3 u_lightDirection2; 
 
     varying vec3 v_normal;
     varying vec2 v_texcoord;       
-    varying vec3 v_color;          // [NEW]
+    varying vec3 v_color;          
     
     void main() {
         vec3 normal = normalize(v_normal);
@@ -45,7 +45,10 @@ const fragmentShaderSource = `
         // --- ILUMINAÇÃO ---
         float light1 = max(dot(normal, normalize(u_lightDirection1)), 0.0);
         float light2 = max(dot(normal, normalize(u_lightDirection2)), 0.0);
-        float totalLight = 0.3 + (light1 * 0.6) + (light2 * 0.2);
+        
+        // AJUSTE DE BRILHO AQUI:
+        // Aumentei a base (0.6) para nada ficar preto
+        float totalLight = 0.5 + (light1 * 0.5) + (light2 * 0.4);
 
         // --- COR BASE ---
         vec4 baseColor;
@@ -53,12 +56,12 @@ const fragmentShaderSource = `
         if (u_isTextured) {
             baseColor = texture2D(u_texture, v_texcoord);
         } else if (u_useVertexColor) {
-            // [NEW] Usa cor do vértice
             baseColor = vec4(v_color, 1.0);
         } else {
             baseColor = vec4(u_color, 1.0);
         }
 
+        // Aplica a luz
         gl_FragColor = vec4(baseColor.rgb * totalLight, 1.0);
     }
 `;
@@ -202,6 +205,7 @@ let powerUps = [];
 let hasShield = false;
 let isTimeFrozen = false;
 let moveDuration = 150;
+let msgTimeout; 
 
 const PU_SHIELD = 0;
 const PU_SPEED = 1;
@@ -284,7 +288,8 @@ function gerarMapa() {
                         x: startX,
                         z: z,
                         speed: speed,
-                        modelIndex: Math.floor(Math.random() * 6) // [NEW] Random color index (0-5) matching carBuffersList
+                        // color: [Math.random(), Math.random(), Math.random()] // Not used with current voxel model but kept structure
+                        color: [0, 0, 0] // Placeholder
                     });
                 }
             }
@@ -325,26 +330,48 @@ function iniciarJogo(modo) {
 }
 
 let loopDoJogo;
+function mostrarMensagem(texto, cor) {
+    const el = document.getElementById("powerUpMsg");
+    el.innerText = texto;
+    el.style.color = cor;
+    
+    // Efeito de aparecer
+    el.style.opacity = 1;
+    el.style.transform = "translate(-50%, -50%) scale(1.2)"; // Aumenta um pouco (pop)
 
+    // Limpa timer anterior se houver
+    if (msgTimeout) clearTimeout(msgTimeout);
+
+    // Some depois de 2 segundos
+    msgTimeout = setTimeout(() => {
+        el.style.opacity = 0;
+        el.style.transform = "translate(-50%, -50%) scale(1.0)";
+    }, 2000);
+}
 function ativarPowerUp(tipo) {
     if (tipo === PU_SHIELD) {
         hasShield = true;
-        console.log("ESCUDO ATIVO! Proteção contra 1 batida.");
-    }
+        // console.log("ESCUDO ATIVO! Proteção contra 1 batida.");
+        mostrarMensagem("🛡️ ESCUDO ATIVO!", "#00FFFF"); // Ciano
+    } 
     else if (tipo === PU_SPEED) {
-        console.log("VELOCIDADE EXTRA! (8s)");
-        moveDuration = 70;
+        // console.log("VELOCIDADE EXTRA! (8s)");
+        mostrarMensagem("⚡ VELOCIDADE MÁXIMA!", "#FFFF00"); // Amarelo
+        
+        moveDuration = 70; 
         setTimeout(() => {
-            moveDuration = 150;
-            console.log("Velocidade normal.");
+            moveDuration = 150; 
+            // Opcional: Avisar que acabou
+            // mostrarMensagem("Velocidade Normal", "#FFFFFF");
         }, 8000);
-    }
+    } 
     else if (tipo === PU_TIME) {
-        console.log("TEMPO PARADO! (5s)");
+        // console.log("TEMPO PARADO! (5s)");
+        mostrarMensagem("⏳ TEMPO CONGELADO!", "#FF00FF"); // Roxo/Rosa
+        
         isTimeFrozen = true;
         setTimeout(() => {
             isTimeFrozen = false;
-            console.log("O tempo voltou.");
         }, 5000);
     }
 }
@@ -410,24 +437,9 @@ function main() {
     const lilyDataObj = createLilypadModel();
     const lilyBuffers = createBuffers(gl, lilyDataObj);
 
-    // [MODIFIED] Multiple Voxel Car Models (Colors)
-    const carColorsDefs = [
-        [0.8, 0.2, 0.2], // Red
-        [0.2, 0.4, 0.8], // Blue
-        [0.9, 0.9, 0.1], // Yellow
-        [0.1, 0.8, 0.2], // Green
-        [0.8, 0.2, 0.8], // Purple
-        [0.9, 0.5, 0.1]  // Orange
-    ];
-
-    // Create a buffer for each color
-    const carBuffersList = carColorsDefs.map(color => {
-        const data = createCarModel(color[0], color[1], color[2]);
-        return createBuffers(gl, data);
-    });
-
-    // Keep a reference to geometry for draw call counts (all cars have same count)
-    const carGeometryCount = createCarModel().indices.length;
+    // [MODIFIED] Using Voxel Car Model
+    const carDataObj = createCarModel();
+    const carBuffers = createBuffers(gl, carDataObj);
 
     // Texturas
     const texGrass = loadTexture(gl, 'grass.jpg');
@@ -601,9 +613,13 @@ function main() {
         }
         gl.uniformMatrix4fv(loc.proj, false, proj);
         gl.uniformMatrix4fv(loc.view, false, view);
-        gl.uniform3fv(loc.lightDir1, [0.5, 1.0, 0.5]);
-        gl.uniform3fv(loc.lightDir2, [-0.5, 0.5, 0.2]);
-
+// LUZ 1: "Sol" (Vem da Direita/Cima -> Cor AMARELA QUENTE)
+        gl.uniform3fv(loc.lightDir1, [0.8, 1.0, 0.5]); 
+        gl.uniform3fv(loc.lightCol1, [1.0, 0.9, 0.6]); // Amarelo claro
+        
+        // LUZ 2: "Contra-Luz" (Vem da Esquerda -> Cor AZULADA)
+        gl.uniform3fv(loc.lightDir2, [-0.8, 0.5, 0.5]); 
+        gl.uniform3fv(loc.lightCol2, [0.2, 0.2, 0.6]); // Azul
         useBuffers(gl, floorBuffers, prog);
 
         // Ativa o uso de texturas no shader
@@ -756,7 +772,8 @@ function main() {
             }
         }
 
-        // [MODIFIED] Car rendering with Voxel Model - Multi Color
+        // [MODIFIED] Car rendering with Voxel Model
+        useBuffers(gl, carBuffers, prog);
         gl.uniform1i(gl.getUniformLocation(prog, "u_useVertexColor"), 1); // Enable vertex colors
 
         for (const carro of carros) {
@@ -767,11 +784,6 @@ function main() {
                 if (carro.x > 20) carro.x = -20;
                 if (carro.x < -20) carro.x = 20;
             }
-
-            // Use the specific buffer for this car's color
-            // Note: switching buffers inside loop is not optimal for performance but fine for this low poly count
-            const bufferToUse = carBuffersList[carro.modelIndex || 0];
-            useBuffers(gl, bufferToUse, prog);
 
             // We don't use uniform color for car anymore, but we can keep it as fallback
             // gl.uniform3fv(loc.color, carro.color); 
@@ -789,8 +801,7 @@ function main() {
             mCar = Matrix.scale(mCar, 0.8, 0.8, 0.8);
             gl.uniformMatrix4fv(loc.model, false, mCar);
             gl.uniformMatrix4fv(loc.invTrans, false, mCar);
-            // We need the index count. Since all cars have same geometry count (just diff colors), we can use any
-            gl.drawElements(gl.TRIANGLES, carGeometryCount, gl.UNSIGNED_SHORT, 0);
+            gl.drawElements(gl.TRIANGLES, carDataObj.indices.length, gl.UNSIGNED_SHORT, 0);
 
             if (Math.abs(carro.z - targetZ) < 0.3) {
                 if (Math.abs(carro.x - currentX) < 1.2) {
