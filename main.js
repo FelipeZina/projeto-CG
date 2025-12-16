@@ -1,3 +1,4 @@
+// --- SHADERS ---
 const vertexShaderSource = `
     attribute vec3 a_position;
     attribute vec3 a_normal;
@@ -45,10 +46,8 @@ const fragmentShaderSource = `
         vec4 baseColor;
         
         if (u_isTextured) {
-            // Se for chão, pega a cor da imagem (textura)
             baseColor = texture2D(u_texture, v_texcoord);
         } else {
-            // Se for sapo/carro, usa a cor sólida
             baseColor = vec4(u_color, 1.0);
         }
 
@@ -57,15 +56,16 @@ const fragmentShaderSource = `
     }
 `;
 
+// --- FUNÇÕES AUXILIARES E MATEMÁTICA ---
 function parseOBJ(text) {
   const positions = [];
   const normals = [];
-  const texcoords = []; // Array para coordenadas UV
+  const texcoords = []; 
   const indices = [];
   
   const tempVertices = [];
   const tempNormals = [];
-  const tempTexCoords = []; // Armazena os vts do arquivo
+  const tempTexCoords = []; 
 
   const lines = text.split('\n');
   for (let line of lines) {
@@ -80,13 +80,11 @@ function parseOBJ(text) {
     } else if (keyword === 'vn') {
       tempNormals.push(args.map(parseFloat));
     } else if (keyword === 'vt') {
-      // Lê coordenadas de textura (u, v)
       tempTexCoords.push(args.map(parseFloat)); 
     } else if (keyword === 'f') {
       const faceVerts = args.map(f => {
         const parts = f.split('/');
         const v = parseInt(parts[0]) - 1;
-        // O formato é v/vt/vn. O segundo elemento é a textura.
         const t = parts.length > 1 && parts[1] ? parseInt(parts[1]) - 1 : undefined; 
         const n = parts.length > 2 && parts[2] ? parseInt(parts[2]) - 1 : undefined;
         return { v, t, n };
@@ -95,16 +93,12 @@ function parseOBJ(text) {
       for (let i = 1; i < faceVerts.length - 1; i++) {
         const tri = [faceVerts[0], faceVerts[i], faceVerts[i + 1]];
         tri.forEach(({ v, t, n }) => {
-          // Posição
           positions.push(...tempVertices[v]);
-          
-          // Textura
           if (t !== undefined && tempTexCoords[t]) {
              texcoords.push(tempTexCoords[t][0], tempTexCoords[t][1]);
           } else {
-             texcoords.push(0, 0); // Placeholder se não tiver textura
+             texcoords.push(0, 0); 
           }
-
           const norm = n !== undefined ? tempNormals[n] : [0, 1, 0];
           normals.push(...norm);
           indices.push(indices.length);
@@ -169,13 +163,13 @@ function multiply(a, b) {
 }
 function lerp(start, end, t) { return start * (1 - t) + end * t; }
 
+// --- VARIÁVEIS GLOBAIS ---
 let sapoX = 0, sapoZ = 0;
 let targetX = 0, targetZ = 0;
 let currentX = 0, currentZ = 0;
 let currentAngle = 0, targetAngle = 0, startAngle = 0;
 let isMoving = false;
 let moveStartTime = 0;
-const MOVE_DURATION = 150;
 const PASSO = 2.0;
 let obstaculos = [];
 let moedas = [];
@@ -190,11 +184,22 @@ let troncoZ = 15.0;
 let troncoSpeed = 0.04; 
 let troncoActive = true; 
 
+// POWER UPS
+let powerUps = [];           
+let hasShield = false;       
+let isTimeFrozen = false;    
+let moveDuration = 150;      
+
+const PU_SHIELD = 0;
+const PU_SPEED = 1;
+const PU_TIME = 2;
+
 function gerarMapa() {
     obstaculos = [];
     moedas = [];
     carros = []; 
     mapRows = {};
+    powerUps = []; 
     
     for (let z = -300; z <= 20; z++) {
         let tipoLinha = 'grass';
@@ -217,7 +222,14 @@ function gerarMapa() {
                     let tipo = Math.random() < 0.7 ? 'tree' : 'rock';
                     obstaculos.push({ x: x, z: z, type: tipo });
                 } else {
-                    if (Math.random() < 0.1) moedas.push({ x: x, z: z, active: true });
+                    let randItem = Math.random();
+                    if (randItem < 0.1) {
+                        moedas.push({ x: x, z: z, active: true });
+                    } 
+                    else if (randItem > 0.98) {
+                        let tipoPower = Math.floor(Math.random() * 3);
+                        powerUps.push({ x: x, z: z, active: true, type: tipoPower });
+                    }
                 }
             }
         } 
@@ -231,9 +243,7 @@ function gerarMapa() {
         else if (tipoLinha === 'road') {
             let direction = (z % 2 === 0) ? 1 : -1;
             let speed = (0.05 + Math.random() * 0.05) * direction;
-
             let numCarros = 1 + Math.floor(Math.random() * 2);
-            
             for (let k = 0; k < numCarros; k++) {
                 let startX = -15 + Math.random() * 30;
                 carros.push({
@@ -263,8 +273,11 @@ function iniciarJogo(modo) {
     currentX = 0; currentZ = 0;
     score = 0;
     troncoZ = 20.0;
+    hasShield = false;
+    isTimeFrozen = false;
+    moveDuration = 150;
+
     document.getElementById("score").innerText = 0;
-    
     document.getElementById("startMenu").style.display = "none";
     document.getElementById("gameOver").style.display = "none";
     document.getElementById("ui").style.display = "block";
@@ -276,6 +289,50 @@ function iniciarJogo(modo) {
 }
 
 let loopDoJogo; 
+
+function ativarPowerUp(tipo) {
+    if (tipo === PU_SHIELD) {
+        hasShield = true;
+        console.log("ESCUDO ATIVO! Proteção contra 1 batida.");
+    } 
+    else if (tipo === PU_SPEED) {
+        console.log("VELOCIDADE EXTRA! (8s)");
+        moveDuration = 70; 
+        setTimeout(() => {
+            moveDuration = 150; 
+            console.log("Velocidade normal.");
+        }, 8000);
+    } 
+    else if (tipo === PU_TIME) {
+        console.log("TEMPO PARADO! (5s)");
+        isTimeFrozen = true;
+        setTimeout(() => {
+            isTimeFrozen = false;
+            console.log("O tempo voltou.");
+        }, 5000);
+    }
+}
+
+// CORREÇÃO: Função morrer recebe 'instakill'
+function morrer(instakill) {
+    // Se tem escudo e NÃO é morte instantânea (Tronco)
+    if (hasShield && !instakill) {
+        console.log("ESCUDO SALVOU! Pulando pra frente.");
+        hasShield = false; 
+        
+        // Empurrar um bloco "pra frente" (Z negativo é frente)
+        targetZ -= 1; 
+        currentZ = targetZ;
+        return; // O jogo CONTINUA
+    }
+
+    // Se bateu no tronco (instakill=true) ou não tinha escudo
+    gameRunning = false;
+    document.getElementById("finalScore").innerText = score;
+    document.getElementById("ui").style.display = "none";
+    document.getElementById("instructions").style.display = "none";
+    document.getElementById("gameOver").style.display = "block";
+}
 
 function main() {
     const canvas = document.getElementById('gameCanvas');
@@ -290,9 +347,13 @@ function main() {
     const prog = createProgram(gl, vertexShaderSource, fragmentShaderSource);
     gl.useProgram(prog);
 
+    // Buffers
     const sapoData = parseOBJ(frogData);
     const sapoBuffers = createBuffers(gl, sapoData);
     
+    const powerUpData = parseOBJ(powerup); 
+    const powerUpBuffers = createBuffers(gl, powerUpData);
+
     const troncoData = parseOBJ(arvoreTronco);
     const troncoBuffers = createBuffers(gl, troncoData);
     const folhasData = parseOBJ(arvoreFolhas);
@@ -315,25 +376,20 @@ function main() {
     const carDataObj = parseOBJ(Carro);
     const carBuffers = createBuffers(gl, carDataObj);
 
+    // Texturas
     const texGrass = loadTexture(gl, 'grass.jpg');
     const texRoad = loadTexture(gl, 'road.jpg');
     const texWater = loadTexture(gl, 'water.jpg');
 
-const floorData = {
+    const floorData = {
         positions: [-100, 0, 100, 100, 0, 100, -100, 0, -100, 100, 0, -100],
         normals: [0,1,0, 0,1,0, 0,1,0, 0,1,0],
-        
-        texcoords: [
-            0,  0, 
-            20, 0, 
-            0,  1, 
-            20, 1
-        ], 
-        
+        texcoords: [0, 0, 20, 0, 0, 1, 20, 1], 
         indices: [0,1,2, 2,1,3]
     };
     const floorBuffers = createBuffers(gl, floorData);
 
+    // Event Listeners
     document.getElementById("btnModeEasy").addEventListener("click", () => iniciarJogo('easy'));
     document.getElementById("btnModeNormal").addEventListener("click", () => iniciarJogo('normal'));
     document.getElementById("btnModeHard").addEventListener("click", () => iniciarJogo('hard'));
@@ -363,19 +419,14 @@ const floorData = {
         charBtn.blur();
     });
 
-    // --- CORREÇÃO 2: PEGANDO LOCAIS DOS UNIFORMS FALTANTES ---
     const loc = {
         model: gl.getUniformLocation(prog, "u_modelMatrix"),
         view: gl.getUniformLocation(prog, "u_viewMatrix"),
         proj: gl.getUniformLocation(prog, "u_projectionMatrix"),
         color: gl.getUniformLocation(prog, "u_color"),
-        
         lightDir1: gl.getUniformLocation(prog, "u_lightDirection1"),
         lightDir2: gl.getUniformLocation(prog, "u_lightDirection2"),
-        
         invTrans: gl.getUniformLocation(prog, "u_worldInverseTranspose"),
-
-        // NOVOS UNIFORMS PARA TEXTURA
         isTextured: gl.getUniformLocation(prog, "u_isTextured"),
         texture: gl.getUniformLocation(prog, "u_texture")
     };
@@ -413,7 +464,9 @@ const floorData = {
                     obs.x === targetX && obs.z === targetZ && obs.type === 'lilypad'
                 );
                 if (!emCimaDaFolha) {
-                    setTimeout(morrer, 300);
+                    // CORREÇÃO: Mudei de TRUE para FALSE.
+                    // Agora a água permite que o escudo salve.
+                    setTimeout(() => morrer(false), 300); 
                 }
             }
 
@@ -425,6 +478,13 @@ const floorData = {
                 if (score >= 20) { 
                     document.getElementById("charBtn").style.display = "block";
                 }
+            }
+            
+            const puIndex = powerUps.findIndex(p => p.x === targetX && p.z === targetZ && p.active);
+            if (puIndex !== -1) {
+                let pu = powerUps[puIndex];
+                pu.active = false; 
+                ativarPowerUp(pu.type); 
             }
 
             isMoving = true;
@@ -443,20 +503,20 @@ const floorData = {
 
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-        if (troncoActive) {
+        if (troncoActive && !isTimeFrozen) { 
             troncoZ -= troncoSpeed; 
-            
             let sapoRealZ = currentZ * PASSO;
             if (troncoZ <= sapoRealZ + 2.0) {
-                 console.log("ESMAGADO!");
-                 morrer();
-                 return; 
+                    console.log("ESMAGADO!");
+                    // CORREÇÃO: Tronco sempre mata (instakill = true)
+                    morrer(true);
+                    return; 
             }
         }
 
         let jumpY = 0;
         if (isMoving) {
-            let t = (Date.now() - moveStartTime) / MOVE_DURATION;
+            let t = (Date.now() - moveStartTime) / moveDuration; 
             if (t >= 1.0) { t = 1.0; isMoving = false; currentX = targetX; currentZ = targetZ; currentAngle = targetAngle; }
             else {
                 currentX = lerp(startX, targetX, t);
@@ -470,7 +530,6 @@ const floorData = {
         const rz = currentZ * PASSO;
 
         const proj = Matrix.perspective(50 * Math.PI/180, canvas.width/canvas.height, 0.1, 500);
-        
         let view;
         if (cameraMode === 'froggy') {
             view = Matrix.lookAt([rx, 20, rz + 20], [rx, 2, rz], [0,1,0]);
@@ -483,22 +542,15 @@ const floorData = {
         gl.uniform3fv(loc.lightDir2, [-0.5, 0.5, 0.2]); 
 
         useBuffers(gl, floorBuffers, prog);
-        
-        // Ativa o uso de texturas no shader
         gl.uniform1i(loc.isTextured, 1);
-        gl.activeTexture(gl.TEXTURE0); // Ativa unidade 0
-        gl.uniform1i(loc.texture, 0);  // Diz pro shader ler da unidade 0
+        gl.activeTexture(gl.TEXTURE0); 
+        gl.uniform1i(loc.texture, 0);  
 
         for(let z = Math.floor(targetZ) - 60; z <= Math.floor(targetZ) + 10; z++) {
             let tipo = mapRows[z] || 'grass'; 
-            
-            if (tipo === 'river') {
-                gl.bindTexture(gl.TEXTURE_2D, texWater);
-            } else if (tipo === 'road') {
-                gl.bindTexture(gl.TEXTURE_2D, texRoad);
-            } else {
-                gl.bindTexture(gl.TEXTURE_2D, texGrass);
-            }
+            if (tipo === 'river') gl.bindTexture(gl.TEXTURE_2D, texWater);
+            else if (tipo === 'road') gl.bindTexture(gl.TEXTURE_2D, texRoad);
+            else gl.bindTexture(gl.TEXTURE_2D, texGrass);
             
             let mFaixa = Matrix.translate(Matrix.identity(), 0, -0.1, z * PASSO);
             mFaixa = Matrix.scale(mFaixa, 1.0, 1.0, 0.01);
@@ -508,6 +560,23 @@ const floorData = {
 
         gl.uniform1i(loc.isTextured, 0); 
 
+        useBuffers(gl, powerUpBuffers, prog); 
+        gl.uniform3fv(loc.color, [1.0, 0.0, 0.0]); 
+
+        let anguloPU = Date.now() / 500; 
+
+        for (const p of powerUps) {
+            if (Math.abs(p.z - targetZ) > 40) continue; 
+            if (p.active) {
+                let mPu = Matrix.translate(Matrix.identity(), p.x * PASSO, 0.8, p.z * PASSO);
+                mPu = Matrix.rotateY(mPu, anguloPU);
+                mPu = Matrix.rotateX(mPu, anguloPU); 
+                mPu = Matrix.scale(mPu, 0.8, 0.8, 0.8); 
+                gl.uniformMatrix4fv(loc.model, false, mPu);
+                gl.uniformMatrix4fv(loc.invTrans, false, mPu);
+                gl.drawElements(gl.TRIANGLES, powerUpData.indices.length, gl.UNSIGNED_SHORT, 0);
+            }
+        }
 
         if (troncoActive) {
             useBuffers(gl, coinBuffers, prog); 
@@ -527,7 +596,9 @@ const floorData = {
 
         if (currentCharacter === 'sapo') {
             useBuffers(gl, sapoBuffers, prog);
-            gl.uniform3fv(loc.color, [0.2, 0.8, 0.2]); 
+            if (hasShield) gl.uniform3fv(loc.color, [0.8, 0.8, 1.0]); 
+            else gl.uniform3fv(loc.color, [0.2, 0.8, 0.2]); 
+
             let mSapo = Matrix.scale(mChar,5.0, 5.0, 5.0);
             gl.uniformMatrix4fv(loc.model, false, mSapo);
             gl.uniformMatrix4fv(loc.invTrans, false, mSapo);
@@ -539,7 +610,10 @@ const floorData = {
             gl.uniformMatrix4fv(loc.model, false, mBase);
             gl.uniformMatrix4fv(loc.invTrans, false, mBase);
             useBuffers(gl, heroBaseBuffers, prog);
-            gl.uniform3fv(loc.color, [0.13, 0.75, 0.13]);
+            
+            if (hasShield) gl.uniform3fv(loc.color, [0.8, 0.8, 1.0]); 
+            else gl.uniform3fv(loc.color, [0.13, 0.75, 0.13]);
+
             gl.drawElements(gl.TRIANGLES, heroBaseData.indices.length, gl.UNSIGNED_SHORT, 0);
 
             let mLetras = Matrix.copy(mChar);
@@ -613,9 +687,12 @@ const floorData = {
         useBuffers(gl, carBuffers, prog);
         for (const carro of carros) {
             if (Math.abs(carro.z - targetZ) > 40) continue;
-            carro.x += carro.speed;
-            if (carro.x > 20) carro.x = -20;
-            if (carro.x < -20) carro.x = 20;
+            
+            if (!isTimeFrozen) {
+                carro.x += carro.speed;
+                if (carro.x > 20) carro.x = -20;
+                if (carro.x < -20) carro.x = 20;
+            }
 
             gl.uniform3fv(loc.color, carro.color); 
             let mCar = Matrix.translate(Matrix.identity(), carro.x * PASSO, 0.0, carro.z * PASSO);
@@ -626,16 +703,22 @@ const floorData = {
 
             if (Math.abs(carro.z - targetZ) < 0.3) { 
                 if (Math.abs(carro.x - currentX) < 1.2) { 
-                    morrer();   
-                    return;
+                    // CORREÇÃO: false = não é instakill (permite escudo)
+                    morrer(false);   
+                    // Se o jogo acabou, retorna. Se o escudo salvou, continua.
+                    if (!gameRunning) return; 
                 }
             }
         }
 
         requestAnimationFrame(loopDoJogo);
     }
+    
+    // Inicia o loop
+    requestAnimationFrame(loopDoJogo);
 }
 
+// --- FUNÇÕES AUXILIARES DE WEBGL ---
 function createShader(gl, type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; }
 function createProgram(gl, vs, fs) { const p = gl.createProgram(); gl.attachShader(p, createShader(gl,gl.VERTEX_SHADER,vs)); gl.attachShader(p, createShader(gl,gl.FRAGMENT_SHADER,fs)); gl.linkProgram(p); return p; }
 function createBuffers(gl, data) {
@@ -683,13 +766,7 @@ function useBuffers(gl, buf, prog) {
 
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buf.i);
 }
-function morrer() {
-    gameRunning = false;
-    document.getElementById("finalScore").innerText = score;
-    document.getElementById("ui").style.display = "none";
-    document.getElementById("instructions").style.display = "none";
-    document.getElementById("gameOver").style.display = "block";
-}
+
 function loadTexture(gl, url) {
     const texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, texture);
@@ -707,17 +784,12 @@ function loadTexture(gl, url) {
                   pixel);
 
     const image = new Image();
-image.onload = function() {
+    image.onload = function() {
         gl.bindTexture(gl.TEXTURE_2D, texture);
         gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
                       srcFormat, srcType, image);
-
-        // --- MUDANÇA CRUCIAL PARA REPETIR ---
-        // Configura para repetir a imagem (tiling)
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-        
-        // Usa filtro Linear ou Mipmap se possível
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     };
